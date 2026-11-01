@@ -16,7 +16,7 @@ import {
   FiEdit3,
   FiX,
   FiCamera,
-  FiBell
+  FiPlus
 } from 'react-icons/fi';
 
 export default function App() {
@@ -38,13 +38,9 @@ export default function App() {
   const [editName, setEditName] = useState('');
   const [editBio, setEditBio] = useState('');
 
-  // Database Users & Search
+  // Registered Database Users & Search
   const [dbUsers, setDbUsers] = useState([]);
   const [userSearchQuery, setUserSearchQuery] = useState('');
-
-  // Notifications
-  const [notifications, setNotifications] = useState([]);
-  const [showNotificationDrawer, setShowNotificationDrawer] = useState(false);
 
   // Posts State
   const [posts, setPosts] = useState([]);
@@ -60,12 +56,13 @@ export default function App() {
   const [newReelTitle, setNewReelTitle] = useState('');
   const [newReelUrl, setNewReelUrl] = useState('');
 
-  // Real Supabase Chat State
+  // Two-Way Chat State
   const [selectedChatUser, setSelectedChatUser] = useState(null);
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
   const [chatPhotoBase64, setChatPhotoBase64] = useState(null);
   const [likedPosts, setLikedPosts] = useState({});
+  const [friendRequests, setFriendRequests] = useState({});
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -89,7 +86,6 @@ export default function App() {
     }
   }, [session]);
 
-  // Fetch or Persist User Profile in Supabase
   const fetchUserProfile = async (user) => {
     const isVerifiedSpecial = user.email?.toLowerCase() === 'omoopeola1@gmail.com';
     try {
@@ -127,8 +123,10 @@ export default function App() {
       if (query.trim()) {
         req = req.or(`username.ilike.%${query}%,full_name.ilike.%${query}%,email.ilike.%${query}%`);
       }
-      const { data } = await req.limit(30);
-      if (data) setDbUsers(data);
+      const { data } = await req.limit(50);
+      if (data && data.length > 0) {
+        setDbUsers(data);
+      }
     } catch (e) {
       console.log('Users fetch error:', e);
     }
@@ -143,7 +141,7 @@ export default function App() {
     }
   };
 
-  // Fetch messages between current user and selected chat user
+  // Real-time messages sync
   useEffect(() => {
     if (!session || !selectedChatUser) return;
 
@@ -161,7 +159,6 @@ export default function App() {
 
     fetchMessages();
 
-    // Realtime subscription for instant message delivery
     const channel = supabase
       .channel('public:messages')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, payload => {
@@ -211,7 +208,6 @@ export default function App() {
     setCurrentUser(null);
   };
 
-  // Convert Device Photo and Save Permanently in Supabase Profile
   const handleDeviceFileUpload = async (e, field) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -219,29 +215,15 @@ export default function App() {
     const reader = new FileReader();
     reader.onloadend = async () => {
       const base64 = reader.result;
-      const updated = { ...currentUser, [field]: base64 };
-      setCurrentUser(updated);
-
-      try {
+      if (field === 'newPostImageBase64') {
+        setNewPostImageBase64(base64);
+      } else {
+        const updated = { ...currentUser, [field]: base64 };
+        setCurrentUser(updated);
         await supabase.from('profiles').upsert([updated]);
-      } catch (err) {
-        console.log('Error saving photo:', err);
       }
     };
     reader.readAsDataURL(file);
-  };
-
-  const handleSaveProfile = async (e) => {
-    e.preventDefault();
-    const updated = { ...currentUser, full_name: editName, bio: editBio };
-    setCurrentUser(updated);
-    setIsEditingProfile(false);
-
-    try {
-      await supabase.from('profiles').upsert([updated]);
-    } catch (err) {
-      console.log('Error updating profile:', err);
-    }
   };
 
   const handleCreatePost = async (e) => {
@@ -271,7 +253,6 @@ export default function App() {
     }
   };
 
-  // Send Two-Way Persistent Message in Supabase
   const handleSendMessage = async (e) => {
     e.preventDefault();
     if ((!newMessage.trim() && !chatPhotoBase64) || !selectedChatUser) return;
@@ -291,8 +272,6 @@ export default function App() {
     }
   };
 
-  const unreadCount = notifications.filter(n => !n.read).length;
-
   if (loading) {
     return (
       <div style={{ backgroundColor: '#0b0f17', color: '#fff', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -311,7 +290,7 @@ export default function App() {
         <div style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '16px', padding: '32px', width: '100%', maxWidth: '400px' }}>
           <div style={{ textAlign: 'center', marginBottom: '24px' }}>
             <h1 style={{ fontSize: '22px', fontWeight: '700', color: '#fff', margin: '0 0 6px' }}>LCF Social Hub</h1>
-            <p style={{ fontSize: '13px', color: '#94a3b8', margin: 0 }}>Permanent Profiles & Real-Time Chats</p>
+            <p style={{ fontSize: '13px', color: '#94a3b8', margin: 0 }}>Connect with Real Registered Users</p>
           </div>
 
           {authError && (
@@ -374,11 +353,11 @@ export default function App() {
     );
   }
 
-  // --- MAIN APP ---
+  // --- MAIN APP (Full Screen Mobile Layout) ---
   return (
-    <div style={{ backgroundColor: '#0b0f17', color: '#f8fafc', minHeight: '100vh', paddingBottom: '75px', fontFamily: 'Inter, system-ui, sans-serif' }}>
+    <div style={{ backgroundColor: '#0b0f17', color: '#f8fafc', minHeight: '100vh', paddingBottom: '80px', fontFamily: 'Inter, system-ui, sans-serif' }}>
       
-      {/* Header */}
+      {/* Sticky Header */}
       <header style={{ position: 'sticky', top: 0, zIndex: 100, backgroundColor: 'rgba(15, 23, 42, 0.95)', backdropFilter: 'blur(10px)', borderBottom: '1px solid #1e293b', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'linear-gradient(135deg, #2563eb, #1d4ed8)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 'bold', fontSize: '12px' }}>
@@ -387,11 +366,11 @@ export default function App() {
           <span style={{ fontSize: '16px', fontWeight: '700' }}>LCF Hub</span>
         </div>
 
-        {/* Navigation */}
-        <nav style={{ display: 'flex', gap: '4px', backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '24px', padding: '3px' }}>
+        {/* Desktop Navbar */}
+        <nav style={{ display: window.innerWidth < 768 ? 'none' : 'flex', gap: '4px', backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '24px', padding: '3px' }}>
           {[
             { id: 'feed', label: 'Feed', icon: <FiHome /> },
-            { id: 'find', label: 'Friends', icon: <FiUsers /> },
+            { id: 'find', label: 'Find Friends', icon: <FiUsers /> },
             { id: 'reels', label: 'Reels', icon: <FiVideo /> },
             { id: 'chats', label: 'Chats', icon: <FiMessageSquare /> },
             { id: 'profile', label: 'Profile', icon: <FiUser /> }
@@ -419,12 +398,9 @@ export default function App() {
           ))}
         </nav>
 
-        {/* Notifications & Sign Out */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <button onClick={handleSignOut} style={{ background: '#1e293b', border: 'none', color: '#94a3b8', padding: '8px', borderRadius: '8px', cursor: 'pointer' }} title="Sign Out">
-            <FiLogOut size={16} />
-          </button>
-        </div>
+        <button onClick={handleSignOut} style={{ background: '#1e293b', border: 'none', color: '#94a3b8', padding: '8px', borderRadius: '8px', cursor: 'pointer' }} title="Sign Out">
+          <FiLogOut size={16} />
+        </button>
       </header>
 
       {/* Main Container */}
@@ -500,7 +476,7 @@ export default function App() {
           <div>
             <div style={{ marginBottom: '16px' }}>
               <h2 style={{ fontSize: '16px', fontWeight: '700', margin: '0 0 4px 0' }}>Find Friends & Registered Members</h2>
-              <p style={{ fontSize: '12px', color: '#94a3b8', margin: 0 }}>Search registered members in the live database.</p>
+              <p style={{ fontSize: '12px', color: '#94a3b8', margin: 0 }}>Search registered members in the live Supabase database.</p>
             </div>
 
             <div style={{ position: 'relative', marginBottom: '16px' }}>
@@ -529,12 +505,23 @@ export default function App() {
                   <div style={{ fontSize: '11px', color: '#60a5fa', marginBottom: '8px' }}>@{user.username}</div>
                   <p style={{ fontSize: '12px', color: '#94a3b8', lineHeight: '1.4', margin: '0 0 14px 0', flex: 1 }}>{user.bio || 'LCF Member'}</p>
 
-                  <button
-                    onClick={() => { setSelectedChatUser(user); setActiveTab('chats'); }}
-                    style={{ width: '100%', padding: '6px', backgroundColor: '#2563eb', border: 'none', borderRadius: '6px', color: '#fff', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}
-                  >
-                    Chat
-                  </button>
+                  <div style={{ display: 'flex', gap: '8px', width: '100%' }}>
+                    <button
+                      onClick={() => {
+                        setFriendRequests(prev => ({ ...prev, [user.username]: 'pending' }));
+                        alert(`Friend request sent to @${user.username}!`);
+                      }}
+                      style={{ flex: 1, padding: '6px', backgroundColor: friendRequests[user.username] ? '#1e293b' : '#2563eb', border: 'none', borderRadius: '6px', color: '#fff', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}
+                    >
+                      {friendRequests[user.username] === 'pending' ? 'Request Sent' : 'Add Friend'}
+                    </button>
+                    <button
+                      onClick={() => { setSelectedChatUser(user); setActiveTab('chats'); }}
+                      style={{ padding: '6px 10px', backgroundColor: '#1e293b', border: 'none', borderRadius: '6px', color: '#60a5fa', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}
+                    >
+                      Chat
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -546,7 +533,39 @@ export default function App() {
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
               <h2 style={{ fontSize: '16px', fontWeight: '700', margin: 0 }}>Community Reels</h2>
+              <button onClick={() => setIsCreatingReel(true)} style={{ padding: '6px 14px', backgroundColor: '#2563eb', border: 'none', borderRadius: '8px', color: '#fff', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
+                Create Reel
+              </button>
             </div>
+
+            {isCreatingReel && (
+              <div style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '12px', padding: '14px', marginBottom: '16px' }}>
+                <h3 style={{ fontSize: '14px', fontWeight: '600', marginBottom: '10px' }}>Publish New Reel</h3>
+                <input
+                  type="text"
+                  placeholder="Reel title..."
+                  value={newReelTitle}
+                  onChange={(e) => setNewReelTitle(e.target.value)}
+                  style={{ width: '100%', padding: '10px', backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', color: '#fff', fontSize: '12px', marginBottom: '8px', boxSizing: 'border-box' }}
+                />
+                <input
+                  type="text"
+                  placeholder="Video/Image URL..."
+                  value={newReelUrl}
+                  onChange={(e) => setNewReelUrl(e.target.value)}
+                  style={{ width: '100%', padding: '10px', backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', color: '#fff', fontSize: '12px', marginBottom: '10px', boxSizing: 'border-box' }}
+                />
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button onClick={() => {
+                    setReels([{ id: Date.now().toString(), title: newReelTitle, user: currentUser?.username || 'user', views: '1 view', url: newReelUrl }, ...reels]);
+                    setIsCreatingReel(false);
+                    setNewReelTitle('');
+                    setNewReelUrl('');
+                  }} style={{ padding: '6px 14px', backgroundColor: '#2563eb', border: 'none', borderRadius: '6px', color: '#fff', fontSize: '12px', cursor: 'pointer' }}>Publish</button>
+                  <button onClick={() => setIsCreatingReel(false)} style={{ padding: '6px 14px', backgroundColor: '#1e293b', border: 'none', borderRadius: '6px', color: '#94a3b8', fontSize: '12px', cursor: 'pointer' }}>Cancel</button>
+                </div>
+              </div>
+            )}
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '14px' }}>
               {reels.map(reel => (
@@ -562,11 +581,11 @@ export default function App() {
           </div>
         )}
 
-        {/* --- TAB 4: PERMANENT TWO-WAY CHATS --- */}
+        {/* --- TAB 4: TWO-WAY CHATS WITH REGISTERED USERS --- */}
         {activeTab === 'chats' && (
-          <div style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '14px', height: '520px', display: 'grid', gridTemplateColumns: window.innerWidth < 768 ? '1fr' : '260px 1fr', overflow: 'hidden' }}>
+          <div style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '14px', height: '520px', display: 'grid', gridTemplateColumns: window.innerWidth < 768 && selectedChatUser ? '1fr' : (window.innerWidth < 768 ? '1fr' : '260px 1fr'), overflow: 'hidden' }}>
             
-            {/* Contacts */}
+            {/* Contacts Directory */}
             <div style={{ borderRight: '1px solid #1e293b', backgroundColor: '#0f172a', padding: '12px', display: window.innerWidth < 768 && selectedChatUser ? 'none' : 'block' }}>
               <h3 style={{ fontSize: '14px', fontWeight: '700', margin: '0 0 10px 0' }}>Direct Messages</h3>
               
@@ -669,7 +688,7 @@ export default function App() {
                 </>
               ) : (
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#94a3b8', fontSize: '13px' }}>
-                  Select a registered user to start a conversation.
+                  Select a registered user from the left list to start a conversation.
                 </div>
               )}
             </div>
@@ -719,7 +738,13 @@ export default function App() {
                     <button onClick={() => setIsEditingProfile(false)} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer' }}><FiX size={18} /></button>
                   </div>
 
-                  <form onSubmit={handleSaveProfile} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <form onSubmit={async (e) => {
+                    e.preventDefault();
+                    const updated = { ...currentUser, full_name: editName, bio: editBio };
+                    setCurrentUser(updated);
+                    setIsEditingProfile(false);
+                    await supabase.from('profiles').upsert([updated]);
+                  }} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                     <div>
                       <label style={{ fontSize: '11px', color: '#94a3b8', display: 'block', marginBottom: '4px' }}>Display Name</label>
                       <input type="text" value={editName} onChange={(e) => setEditName(e.target.value)} style={{ width: '100%', padding: '8px', backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '6px', color: '#fff', fontSize: '12px', boxSizing: 'border-box' }} />
@@ -737,26 +762,25 @@ export default function App() {
         )}
       </main>
 
-      {/* Mobile Bottom Navigation Bar */}
-      {window.innerWidth < 768 && (
-        <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(15, 23, 42, 0.98)', borderTop: '1px solid #1e293b', display: 'flex', justifyContent: 'space-around', padding: '12px 0', zIndex: 100 }}>
-          {[
-            { id: 'feed', icon: <FiHome size={22} /> },
-            { id: 'find', icon: <FiUsers size={22} /> },
-            { id: 'reels', icon: <FiVideo size={22} /> },
-            { id: 'chats', icon: <FiMessageSquare size={22} /> },
-            { id: 'profile', icon: <FiUser size={22} /> }
-          ].map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              style={{ background: 'none', border: 'none', color: activeTab === tab.id ? '#3b82f6' : '#94a3b8', cursor: 'pointer', padding: '4px' }}
-            >
-              {tab.icon}
-            </button>
-          ))}
-        </div>
-      )}
+      {/* Mobile Full-Screen Bottom Navigation Bar */}
+      <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(15, 23, 42, 0.98)', borderTop: '1px solid #1e293b', display: 'flex', justifyContent: 'space-around', padding: '12px 0', zIndex: 100 }}>
+        {[
+          { id: 'feed', label: 'Feed', icon: <FiHome size={20} /> },
+          { id: 'find', label: 'Friends', icon: <FiUsers size={20} /> },
+          { id: 'reels', label: 'Reels', icon: <FiVideo size={20} /> },
+          { id: 'chats', label: 'Chats', icon: <FiMessageSquare size={20} /> },
+          { id: 'profile', label: 'Profile', icon: <FiUser size={20} /> }
+        ].map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            style={{ background: 'none', border: 'none', color: activeTab === tab.id ? '#3b82f6' : '#94a3b8', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', fontSize: '10px' }}
+          >
+            {tab.icon}
+            <span>{tab.label}</span>
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
