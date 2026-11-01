@@ -19,7 +19,8 @@ import {
   FiUserCheck,
   FiEdit3,
   FiX,
-  FiCamera
+  FiCamera,
+  FiUserCheck as FiFriend
 } from 'react-icons/fi';
 
 export default function App() {
@@ -40,8 +41,6 @@ export default function App() {
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [editName, setEditName] = useState('');
   const [editBio, setEditBio] = useState('');
-  const [editAvatar, setEditAvatar] = useState('');
-  const [editCover, setEditCover] = useState('');
 
   // Posts State
   const [posts, setPosts] = useState([]);
@@ -58,13 +57,17 @@ export default function App() {
   const [newReelTitle, setNewReelTitle] = useState('');
   const [newReelUrl, setNewReelUrl] = useState('');
 
-  // Chat & Users Directory State
-  const [allUsers, setAllUsers] = useState([
-    { id: '1', name: 'David Mark', username: 'david_m', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=200', online: true },
-    { id: '2', name: 'Sarah Connor', username: 'sarah_c', avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=200', online: true },
-    { id: '3', name: 'Alexander Smith', username: 'alex_s', avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&q=80&w=200', online: false },
-    { id: '4', name: 'Gene Foster', username: 'gene_foster', avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=200', online: true }
+  // Community Directory & Friends State
+  const [communityUsers, setCommunityUsers] = useState([
+    { id: 'u1', name: 'Omoopeola', username: 'omoopeola', email: 'omoopeola1@gmail.com', bio: 'Verified LCF Pioneer & Community Member.', avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200', verified: true, online: true },
+    { id: 'u2', name: 'David Mark', username: 'david_m', email: 'david@lcf.com', bio: 'Afrobeats producer & song writer.', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=200', verified: false, online: true },
+    { id: 'u3', name: 'Sarah Connor', username: 'sarah_c', email: 'sarah@lcf.com', bio: 'UI/UX Designer & React Developer.', avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=200', verified: false, online: true },
+    { id: 'u4', name: 'Gene Foster', username: 'gene_foster', email: 'gene@lcf.com', bio: 'Commercial building project coordinator.', avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=200', verified: false, online: false }
   ]);
+  const [friendRequests, setFriendRequests] = useState({});
+  const [friendsList, setFriendsList] = useState({});
+
+  // Chat State
   const [userSearchQuery, setUserSearchQuery] = useState('');
   const [selectedChatUser, setSelectedChatUser] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -72,7 +75,6 @@ export default function App() {
 
   // Interactions State
   const [likedPosts, setLikedPosts] = useState({});
-  const [followedUsers, setFollowedUsers] = useState({});
   const [comments, setComments] = useState({});
   const [activeCommentInput, setActiveCommentInput] = useState({});
 
@@ -92,21 +94,39 @@ export default function App() {
   }, []);
 
   const initUserData = (user) => {
+    const isVerifiedSpecial = user.email?.toLowerCase() === 'omoopeola1@gmail.com';
     const defaultProfile = {
       id: user.id,
+      email: user.email,
       username: user.user_metadata?.username || user.email.split('@')[0],
-      full_name: user.user_metadata?.full_name || 'LCF Member',
-      bio: 'Frontend Architect & Community Builder on LCF.',
+      full_name: user.user_metadata?.full_name || (isVerifiedSpecial ? 'Omoopeola' : 'LCF Member'),
+      bio: isVerifiedSpecial ? 'Verified Official LCF Pioneer Account.' : 'Frontend Architect & Community Builder.',
       avatar_url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200',
       cover_url: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&q=80&w=1000',
-      followers: 142,
-      following: 89
+      verified: isVerifiedSpecial,
+      followers: 210,
+      following: 95
     };
     setCurrentUser(defaultProfile);
     setEditName(defaultProfile.full_name);
     setEditBio(defaultProfile.bio);
-    setEditAvatar(defaultProfile.avatar_url);
-    setEditCover(defaultProfile.cover_url);
+
+    // Ensure user is in community directory
+    setCommunityUsers(prev => {
+      if (!prev.some(u => u.email === user.email)) {
+        return [{
+          id: user.id,
+          name: defaultProfile.full_name,
+          username: defaultProfile.username,
+          email: user.email,
+          bio: defaultProfile.bio,
+          avatar: defaultProfile.avatar_url,
+          verified: isVerifiedSpecial,
+          online: true
+        }, ...prev];
+      }
+      return prev;
+    });
   };
 
   const handleAuth = async (e) => {
@@ -141,14 +161,29 @@ export default function App() {
     setCurrentUser(null);
   };
 
+  // Handle Device File Upload for Profile Photo
+  const handleFileUpload = (e, targetField) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const base64String = reader.result;
+      if (targetField === 'avatar') {
+        setCurrentUser(prev => ({ ...prev, avatar_url: base64String }));
+      } else if (targetField === 'cover') {
+        setCurrentUser(prev => ({ ...prev, cover_url: base64String }));
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handleSaveProfile = (e) => {
     e.preventDefault();
     setCurrentUser(prev => ({
       ...prev,
       full_name: editName,
-      bio: editBio,
-      avatar_url: editAvatar,
-      cover_url: editCover
+      bio: editBio
     }));
     setIsEditingProfile(false);
   };
@@ -162,6 +197,7 @@ export default function App() {
       user_name: currentUser?.full_name || 'You',
       username: currentUser?.username || 'you',
       avatar: currentUser?.avatar_url,
+      verified: currentUser?.verified,
       content: newPostText,
       image: newPostImage.trim() ? newPostImage : null,
       likes: 0,
@@ -181,7 +217,7 @@ export default function App() {
     const newReel = {
       id: Date.now().toString(),
       title: newReelTitle,
-      user: currentUser?.username || 'lekkxygold',
+      user: currentUser?.username || 'user',
       views: '1 view',
       url: newReelUrl
     };
@@ -197,19 +233,14 @@ export default function App() {
     setPosts(posts.map(p => p.id === postId ? { ...p, likes: likedPosts[postId] ? p.likes - 1 : p.likes + 1 } : p));
   };
 
-  const toggleFollow = (uname) => {
-    setFollowedUsers(prev => ({ ...prev, [uname]: !prev[uname] }));
+  const sendFriendRequest = (usernameKey) => {
+    setFriendRequests(prev => ({ ...prev, [usernameKey]: 'pending' }));
+    alert(`Friend request sent to @${usernameKey}!`);
   };
 
-  const handleAddComment = (postId) => {
-    const text = activeCommentInput[postId];
-    if (!text || !text.trim()) return;
-
-    setComments(prev => ({
-      ...prev,
-      [postId]: [...(prev[postId] || []), { user: currentUser?.username || 'you', text }]
-    }));
-    setActiveCommentInput(prev => ({ ...prev, [postId]: '' }));
+  const acceptFriendRequest = (usernameKey) => {
+    setFriendsList(prev => ({ ...prev, [usernameKey]: true }));
+    setFriendRequests(prev => ({ ...prev, [usernameKey]: 'accepted' }));
   };
 
   const handleSendMessage = (e) => {
@@ -220,9 +251,10 @@ export default function App() {
     setNewMessage('');
   };
 
-  const filteredChatUsers = allUsers.filter(u => 
-    u.name.toLowerCase().includes(userSearchQuery.toLowerCase()) || 
-    u.username.toLowerCase().includes(userSearchQuery.toLowerCase())
+  const filteredUsers = communityUsers.filter(u =>
+    u.name.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
+    u.username.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
+    u.email.toLowerCase().includes(userSearchQuery.toLowerCase())
   );
 
   if (loading) {
@@ -243,7 +275,7 @@ export default function App() {
         <div style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '16px', padding: '32px', width: '100%', maxWidth: '400px' }}>
           <div style={{ textAlign: 'center', marginBottom: '24px' }}>
             <h1 style={{ fontSize: '22px', fontWeight: '700', color: '#fff', margin: '0 0 6px' }}>LCF Social Hub</h1>
-            <p style={{ fontSize: '13px', color: '#94a3b8', margin: 0 }}>Real Accounts, Real Connections</p>
+            <p style={{ fontSize: '13px', color: '#94a3b8', margin: 0 }}>Verified Accounts & Global Friends</p>
           </div>
 
           {authError && (
@@ -258,7 +290,7 @@ export default function App() {
                 <input
                   type="text"
                   required
-                  placeholder="Full Name (e.g. Olalekan Ogunsola)"
+                  placeholder="Full Name"
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
                   style={{ width: '100%', padding: '12px', backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
@@ -266,7 +298,7 @@ export default function App() {
                 <input
                   type="text"
                   required
-                  placeholder="Username (e.g. lekkxygold)"
+                  placeholder="Username"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   style={{ width: '100%', padding: '12px', backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
@@ -276,7 +308,7 @@ export default function App() {
             <input
               type="email"
               required
-              placeholder="Email address"
+              placeholder="Email address (e.g. omoopeola1@gmail.com)"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               style={{ width: '100%', padding: '12px', backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
@@ -323,9 +355,9 @@ export default function App() {
         <nav style={{ display: 'flex', gap: '4px', backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '24px', padding: '3px' }}>
           {[
             { id: 'feed', label: 'Feed', icon: <FiHome /> },
+            { id: 'find', label: 'Find Friends', icon: <FiUsers /> },
             { id: 'reels', label: 'Reels', icon: <FiVideo /> },
             { id: 'chats', label: 'Chats', icon: <FiMessageSquare /> },
-            { id: 'hubs', label: 'Hubs', icon: <FiUsers /> },
             { id: 'profile', label: 'Profile', icon: <FiUser /> }
           ].map(tab => (
             <button
@@ -405,18 +437,12 @@ export default function App() {
                     <img src={post.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200'} alt="u" style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover' }} />
                     <div>
                       <div style={{ fontSize: '13px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        {post.user_name} <FiCheckCircle size={12} color="#3b82f6" />
+                        {post.user_name}
+                        {post.verified && <FiCheckCircle size={13} color="#3b82f6" title="Verified Account" />}
                       </div>
                       <div style={{ fontSize: '11px', color: '#94a3b8' }}>@{post.username} • {post.created_at}</div>
                     </div>
                   </div>
-
-                  <button
-                    onClick={() => toggleFollow(post.username)}
-                    style={{ padding: '4px 10px', border: '1px solid #3b82f6', borderRadius: '12px', backgroundColor: followedUsers[post.username] ? '#3b82f6' : 'transparent', color: '#fff', fontSize: '11px', cursor: 'pointer' }}
-                  >
-                    {followedUsers[post.username] ? 'Following' : 'Follow'}
-                  </button>
                 </div>
 
                 <p style={{ fontSize: '13px', lineHeight: '1.4', color: '#e2e8f0', margin: '0 0 10px 0' }}>{post.content}</p>
@@ -433,32 +459,68 @@ export default function App() {
                     <FiMessageCircle /> {(comments[post.id] || []).length}
                   </div>
                 </div>
-
-                {/* Comments */}
-                <div style={{ marginTop: '10px', paddingTop: '8px', borderTop: '1px dashed #1e293b' }}>
-                  {(comments[post.id] || []).map((c, i) => (
-                    <div key={i} style={{ fontSize: '11px', color: '#cbd5e1', marginBottom: '4px' }}>
-                      <strong style={{ color: '#60a5fa' }}>@{c.user}: </strong>{c.text}
-                    </div>
-                  ))}
-                  <div style={{ display: 'flex', gap: '6px', marginTop: '6px' }}>
-                    <input
-                      type="text"
-                      placeholder="Add a comment..."
-                      value={activeCommentInput[post.id] || ''}
-                      onChange={(e) => setActiveCommentInput({ ...activeCommentInput, [post.id]: e.target.value })}
-                      onKeyDown={(e) => e.key === 'Enter' && handleAddComment(post.id)}
-                      style={{ flex: 1, padding: '6px 10px', backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '6px', color: '#fff', fontSize: '11px' }}
-                    />
-                    <button onClick={() => handleAddComment(post.id)} style={{ padding: '6px 10px', backgroundColor: '#2563eb', border: 'none', borderRadius: '6px', color: '#fff', fontSize: '11px', cursor: 'pointer' }}>Reply</button>
-                  </div>
-                </div>
               </div>
             ))}
           </div>
         )}
 
-        {/* --- TAB 2: REELS --- */}
+        {/* --- TAB 2: FIND FRIENDS & MEET NEW MEMBERS --- */}
+        {activeTab === 'find' && (
+          <div>
+            <div style={{ marginBottom: '16px' }}>
+              <h2 style={{ fontSize: '16px', fontWeight: '700', margin: '0 0 4px 0' }}>Find Friends & Meet Members</h2>
+              <p style={{ fontSize: '12px', color: '#94a3b8', margin: 0 }}>Search by name or username to connect, send friend requests, or start chatting.</p>
+            </div>
+
+            {/* Search Bar */}
+            <div style={{ position: 'relative', marginBottom: '16px' }}>
+              <FiSearch style={{ position: 'absolute', left: '12px', top: '12px', color: '#94a3b8', fontSize: '14px' }} />
+              <input
+                type="text"
+                placeholder="Search by name, username, or email..."
+                value={userSearchQuery}
+                onChange={(e) => setUserSearchQuery(e.target.value)}
+                style={{ width: '100%', padding: '10px 10px 10px 36px', backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '10px', color: '#fff', fontSize: '13px', boxSizing: 'border-box', outline: 'none' }}
+              />
+            </div>
+
+            {/* Users Grid */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '14px' }}>
+              {filteredUsers.map(user => (
+                <div key={user.id} style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '12px', padding: '16px', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
+                  <div style={{ position: 'relative', marginBottom: '10px' }}>
+                    <img src={user.avatar} alt="u" style={{ width: '64px', height: '64px', borderRadius: '50%', objectFit: 'cover' }} />
+                    {user.online && <div style={{ position: 'absolute', bottom: 2, right: 2, width: '12px', height: '12px', backgroundColor: '#22c55e', borderRadius: '50%', border: '2px solid #151c2c' }}></div>}
+                  </div>
+
+                  <div style={{ fontSize: '14px', fontWeight: '700', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', marginBottom: '2px' }}>
+                    {user.name}
+                    {user.verified && <FiCheckCircle size={13} color="#3b82f6" title="Verified Account" />}
+                  </div>
+                  <div style={{ fontSize: '11px', color: '#60a5fa', marginBottom: '8px' }}>@{user.username}</div>
+                  <p style={{ fontSize: '12px', color: '#94a3b8', lineHeight: '1.4', margin: '0 0 14px 0', flex: 1 }}>{user.bio}</p>
+
+                  <div style={{ display: 'flex', gap: '8px', width: '100%' }}>
+                    <button
+                      onClick={() => sendFriendRequest(user.username)}
+                      style={{ flex: 1, padding: '6px', backgroundColor: friendRequests[user.username] ? '#1e293b' : '#2563eb', border: 'none', borderRadius: '6px', color: '#fff', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}
+                    >
+                      {friendRequests[user.username] === 'pending' ? 'Request Sent' : 'Add Friend'}
+                    </button>
+                    <button
+                      onClick={() => { setSelectedChatUser(user); setActiveTab('chats'); }}
+                      style={{ padding: '6px 10px', backgroundColor: '#1e293b', border: 'none', borderRadius: '6px', color: '#60a5fa', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}
+                    >
+                      Chat
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* --- TAB 3: REELS --- */}
         {activeTab === 'reels' && (
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
@@ -506,28 +568,16 @@ export default function App() {
           </div>
         )}
 
-        {/* --- TAB 3: CHATS & USER SEARCH --- */}
+        {/* --- TAB 4: CHATS & MESSAGING REQUESTS --- */}
         {activeTab === 'chats' && (
           <div style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '14px', height: '520px', display: 'grid', gridTemplateColumns: window.innerWidth < 768 ? '1fr' : '260px 1fr', overflow: 'hidden' }}>
             
-            {/* Contacts & Search */}
+            {/* Contacts */}
             <div style={{ borderRight: '1px solid #1e293b', backgroundColor: '#0f172a', padding: '12px', display: window.innerWidth < 768 && selectedChatUser ? 'none' : 'block' }}>
-              <h3 style={{ fontSize: '14px', fontWeight: '700', margin: '0 0 10px 0' }}>Messages</h3>
+              <h3 style={{ fontSize: '14px', fontWeight: '700', margin: '0 0 10px 0' }}>Direct Messages</h3>
               
-              {/* User Search Input */}
-              <div style={{ position: 'relative', marginBottom: '10px' }}>
-                <FiSearch style={{ position: 'absolute', left: '10px', top: '10px', color: '#94a3b8', fontSize: '12px' }} />
-                <input
-                  type="text"
-                  placeholder="Search user..."
-                  value={userSearchQuery}
-                  onChange={(e) => setUserSearchQuery(e.target.value)}
-                  style={{ width: '100%', padding: '8px 8px 8px 30px', backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '8px', color: '#fff', fontSize: '12px', boxSizing: 'border-box', outline: 'none' }}
-                />
-              </div>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', overflowY: 'auto', maxHeight: '400px' }}>
-                {filteredChatUsers.map(user => (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', overflowY: 'auto', maxHeight: '420px' }}>
+                {communityUsers.map(user => (
                   <div
                     key={user.id}
                     onClick={() => setSelectedChatUser(user)}
@@ -538,7 +588,10 @@ export default function App() {
                       {user.online && <div style={{ position: 'absolute', bottom: 0, right: 0, width: '8px', height: '8px', backgroundColor: '#22c55e', borderRadius: '50%', border: '2px solid #0f172a' }}></div>}
                     </div>
                     <div>
-                      <div style={{ fontSize: '12px', fontWeight: '600' }}>{user.name}</div>
+                      <div style={{ fontSize: '12px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                        {user.name}
+                        {user.verified && <FiCheckCircle size={10} color="#3b82f6" />}
+                      </div>
                       <div style={{ fontSize: '10px', color: '#94a3b8' }}>@{user.username}</div>
                     </div>
                   </div>
@@ -557,7 +610,10 @@ export default function App() {
                       )}
                       <img src={selectedChatUser.avatar} alt="u" style={{ width: '28px', height: '28px', borderRadius: '50%', objectFit: 'cover' }} />
                       <div>
-                        <div style={{ fontSize: '13px', fontWeight: '600' }}>{selectedChatUser.name}</div>
+                        <div style={{ fontSize: '13px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          {selectedChatUser.name}
+                          {selectedChatUser.verified && <FiCheckCircle size={11} color="#3b82f6" />}
+                        </div>
                         <div style={{ fontSize: '10px', color: '#22c55e' }}>Online</div>
                       </div>
                     </div>
@@ -565,7 +621,7 @@ export default function App() {
 
                   <div style={{ flex: 1, padding: '16px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '10px' }}>
                     <div style={{ alignSelf: 'flex-start', backgroundColor: '#1e293b', padding: '8px 12px', borderRadius: '10px', fontSize: '12px', maxWidth: '75%' }}>
-                      Hello! Welcome to LCF direct message. Let's chat!
+                      Hello! Let's connect on LCF Social Hub.
                     </div>
                     {messages.map(m => (
                       <div key={m.id} style={{ alignSelf: m.sender === 'you' ? 'flex-end' : 'flex-start', backgroundColor: m.sender === 'you' ? '#2563eb' : '#1e293b', color: '#fff', padding: '8px 12px', borderRadius: '10px', fontSize: '12px', maxWidth: '75%' }}>
@@ -589,7 +645,7 @@ export default function App() {
                 </>
               ) : (
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#94a3b8', fontSize: '13px' }}>
-                  Select a user from the left to start a conversation.
+                  Select a contact or search for a friend to start messaging.
                 </div>
               )}
             </div>
@@ -597,38 +653,36 @@ export default function App() {
           </div>
         )}
 
-        {/* --- TAB 4: HUBS --- */}
-        {activeTab === 'hubs' && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '14px' }}>
-            {[
-              { name: 'Afrobeats & Music Producers', members: '1,420 members', desc: 'Collaborate on song lyrics, beats, and marketing.' },
-              { name: 'Frontend & UI/UX Engineers', members: '2,890 members', desc: 'React, Tailwind CSS, and web application design.' },
-              { name: 'Project Engineering & CAD', members: '950 members', desc: 'Shop drawings, architectural layouts, and permit reviews.' }
-            ].map((hub, i) => (
-              <div key={i} style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '12px', padding: '16px' }}>
-                <h3 style={{ fontSize: '15px', fontWeight: '700', color: '#fff', margin: '0 0 4px 0' }}>{hub.name}</h3>
-                <div style={{ fontSize: '11px', color: '#60a5fa', marginBottom: '8px' }}>{hub.members}</div>
-                <p style={{ fontSize: '12px', color: '#94a3b8', lineHeight: '1.4', marginBottom: '12px' }}>{hub.desc}</p>
-                <button style={{ width: '100%', padding: '6px', backgroundColor: '#1e293b', border: 'none', borderRadius: '6px', color: '#fff', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}>Join Hub</button>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* --- TAB 5: PROFILE --- */}
+        {/* --- TAB 5: PROFILE WITH DEVICE FILE UPLOAD --- */}
         {activeTab === 'profile' && (
           <div style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '14px', overflow: 'hidden' }}>
-            <div style={{ height: '140px', backgroundImage: `url(${currentUser?.cover_url})`, backgroundSize: 'cover', backgroundPosition: 'center' }}></div>
+            <div style={{ height: '140px', backgroundImage: `url(${currentUser?.cover_url})`, backgroundSize: 'cover', backgroundPosition: 'center', position: 'relative' }}>
+              <label style={{ position: 'absolute', bottom: '10px', right: '10px', backgroundColor: 'rgba(0,0,0,0.7)', padding: '6px 10px', borderRadius: '6px', fontSize: '11px', cursor: 'pointer', color: '#fff', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <FiCamera /> Change Cover
+                <input type="file" accept="image/*" onChange={(e) => handleFileUpload(e, 'cover')} style={{ display: 'none' }} />
+              </label>
+            </div>
+
             <div style={{ padding: '0 20px 20px', position: 'relative', marginTop: '-45px' }}>
               <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: '12px' }}>
-                <img src={currentUser?.avatar_url} alt="avatar" style={{ width: '90px', height: '90px', borderRadius: '50%', border: '4px solid #151c2c', objectFit: 'cover' }} />
+                <div style={{ position: 'relative' }}>
+                  <img src={currentUser?.avatar_url} alt="avatar" style={{ width: '90px', height: '90px', borderRadius: '50%', border: '4px solid #151c2c', objectFit: 'cover' }} />
+                  <label style={{ position: 'absolute', bottom: 0, right: 0, backgroundColor: '#2563eb', padding: '6px', borderRadius: '50%', cursor: 'pointer', color: '#fff' }} title="Upload from phone">
+                    <FiCamera size={12} />
+                    <input type="file" accept="image/*" onChange={(e) => handleFileUpload(e, 'avatar')} style={{ display: 'none' }} />
+                  </label>
+                </div>
+
                 <button onClick={() => setIsEditingProfile(true)} style={{ padding: '6px 14px', backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px', color: '#fff', fontSize: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
                   <FiEdit3 /> Edit Profile
                 </button>
               </div>
 
-              <h2 style={{ fontSize: '18px', fontWeight: '700', color: '#fff', margin: '0 0 2px 0' }}>{currentUser?.full_name}</h2>
-              <div style={{ fontSize: '12px', color: '#60a5fa', marginBottom: '10px' }}>@{currentUser?.username}</div>
+              <h2 style={{ fontSize: '18px', fontWeight: '700', color: '#fff', margin: '0 0 2px 0', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                {currentUser?.full_name}
+                {currentUser?.verified && <FiCheckCircle size={16} color="#3b82f6" title="Verified Account" />}
+              </h2>
+              <div style={{ fontSize: '12px', color: '#60a5fa', marginBottom: '10px' }}>@{currentUser?.username} • {currentUser?.email}</div>
               <p style={{ fontSize: '13px', color: '#cbd5e1', lineHeight: '1.4', margin: '0 0 14px 0' }}>{currentUser?.bio}</p>
 
               <div style={{ display: 'flex', gap: '16px', fontSize: '13px', color: '#94a3b8' }}>
@@ -655,14 +709,6 @@ export default function App() {
                       <label style={{ fontSize: '11px', color: '#94a3b8', display: 'block', marginBottom: '4px' }}>Bio</label>
                       <textarea rows={2} value={editBio} onChange={(e) => setEditBio(e.target.value)} style={{ width: '100%', padding: '8px', backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '6px', color: '#fff', fontSize: '12px', boxSizing: 'border-box', resize: 'none' }} />
                     </div>
-                    <div>
-                      <label style={{ fontSize: '11px', color: '#94a3b8', display: 'block', marginBottom: '4px' }}>Avatar Image URL</label>
-                      <input type="text" value={editAvatar} onChange={(e) => setEditAvatar(e.target.value)} style={{ width: '100%', padding: '8px', backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '6px', color: '#fff', fontSize: '12px', boxSizing: 'border-box' }} />
-                    </div>
-                    <div>
-                      <label style={{ fontSize: '11px', color: '#94a3b8', display: 'block', marginBottom: '4px' }}>Cover Banner Image URL</label>
-                      <input type="text" value={editCover} onChange={(e) => setEditCover(e.target.value)} style={{ width: '100%', padding: '8px', backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '6px', color: '#fff', fontSize: '12px', boxSizing: 'border-box' }} />
-                    </div>
                     <button type="submit" style={{ marginTop: '8px', padding: '10px', backgroundColor: '#2563eb', border: 'none', borderRadius: '8px', color: '#fff', fontWeight: '600', fontSize: '12px', cursor: 'pointer' }}>Save Changes</button>
                   </form>
                 </div>
@@ -677,9 +723,9 @@ export default function App() {
         <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(15, 23, 42, 0.95)', borderTop: '1px solid #1e293b', display: 'flex', justifyContent: 'space-around', padding: '10px 0', zIndex: 100 }}>
           {[
             { id: 'feed', icon: <FiHome size={20} /> },
+            { id: 'find', icon: <FiUsers size={20} /> },
             { id: 'reels', icon: <FiVideo size={20} /> },
             { id: 'chats', icon: <FiMessageSquare size={20} /> },
-            { id: 'hubs', icon: <FiUsers size={20} /> },
             { id: 'profile', icon: <FiUser size={20} /> }
           ].map(tab => (
             <button
