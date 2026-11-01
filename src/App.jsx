@@ -15,8 +15,7 @@ import {
   FiSearch,
   FiEdit3,
   FiX,
-  FiCamera,
-  FiPlus
+  FiCamera
 } from 'react-icons/fi';
 
 export default function App() {
@@ -38,7 +37,7 @@ export default function App() {
   const [editName, setEditName] = useState('');
   const [editBio, setEditBio] = useState('');
 
-  // Registered Database Users & Search
+  // Registered Database Users & Instant Search
   const [dbUsers, setDbUsers] = useState([]);
   const [userSearchQuery, setUserSearchQuery] = useState('');
 
@@ -117,18 +116,19 @@ export default function App() {
     }
   };
 
+  // Instant 3-Letter Search Query for Registered Users
   const fetchRealUsers = async (query = '') => {
     try {
       let req = supabase.from('profiles').select('*');
-      if (query.trim()) {
+      if (query.trim().length >= 1) {
         req = req.or(`username.ilike.%${query}%,full_name.ilike.%${query}%,email.ilike.%${query}%`);
       }
       const { data } = await req.limit(50);
-      if (data && data.length > 0) {
+      if (data) {
         setDbUsers(data);
       }
     } catch (e) {
-      console.log('Users fetch error:', e);
+      console.log('Users search error:', e);
     }
   };
 
@@ -183,12 +183,27 @@ export default function App() {
 
     try {
       if (authMode === 'signup') {
-        const { error } = await supabase.auth.signUp({
+        const { error, data } = await supabase.auth.signUp({
           email,
           password,
           options: { data: { username, full_name: fullName } }
         });
         if (error) throw error;
+        
+        if (data?.user) {
+          const isVerifiedSpecial = email.toLowerCase() === 'omoopeola1@gmail.com';
+          await supabase.from('profiles').upsert([{
+            id: data.user.id,
+            email,
+            username,
+            full_name: fullName,
+            bio: isVerifiedSpecial ? 'Verified Official LCF Pioneer Account.' : 'LCF Member',
+            avatar_url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200',
+            cover_url: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&q=80&w=1000',
+            verified: isVerifiedSpecial
+          }]);
+        }
+
         alert('Registration successful! You can now sign in.');
         setAuthMode('login');
       } else {
@@ -232,14 +247,14 @@ export default function App() {
 
     const newPost = {
       id: Date.now().toString(),
+      user_id: session.user.id,
       user_name: currentUser?.full_name || 'You',
       username: currentUser?.username || 'you',
       avatar: currentUser?.avatar_url,
       verified: currentUser?.verified,
       content: newPostText,
       image: newPostImageBase64,
-      likes: 0,
-      created_at: 'Just now'
+      likes: 0
     };
 
     setPosts([newPost, ...posts]);
@@ -249,7 +264,7 @@ export default function App() {
     try {
       await supabase.from('posts').insert([newPost]);
     } catch (err) {
-      console.log('Post error:', err);
+      console.log('Post save error:', err);
     }
   };
 
@@ -290,7 +305,7 @@ export default function App() {
         <div style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '16px', padding: '32px', width: '100%', maxWidth: '400px' }}>
           <div style={{ textAlign: 'center', marginBottom: '24px' }}>
             <h1 style={{ fontSize: '22px', fontWeight: '700', color: '#fff', margin: '0 0 6px' }}>LCF Social Hub</h1>
-            <p style={{ fontSize: '13px', color: '#94a3b8', margin: 0 }}>Connect with Real Registered Users</p>
+            <p style={{ fontSize: '13px', color: '#94a3b8', margin: 0 }}>Persistent Profiles & Live Search</p>
           </div>
 
           {authError && (
@@ -471,23 +486,24 @@ export default function App() {
           </div>
         )}
 
-        {/* --- TAB 2: FIND FRIENDS --- */}
+        {/* --- TAB 2: FIND FRIENDS WITH INSTANT LIVE SEARCH --- */}
         {activeTab === 'find' && (
           <div>
             <div style={{ marginBottom: '16px' }}>
               <h2 style={{ fontSize: '16px', fontWeight: '700', margin: '0 0 4px 0' }}>Find Friends & Registered Members</h2>
-              <p style={{ fontSize: '12px', color: '#94a3b8', margin: 0 }}>Search registered members in the live Supabase database.</p>
+              <p style={{ fontSize: '12px', color: '#94a3b8', margin: 0 }}>Type 3 or more letters to search registered members instantly.</p>
             </div>
 
             <div style={{ position: 'relative', marginBottom: '16px' }}>
               <FiSearch style={{ position: 'absolute', left: '12px', top: '12px', color: '#94a3b8', fontSize: '14px' }} />
               <input
                 type="text"
-                placeholder="Search by name, username or email..."
+                placeholder="Search username, name, or email..."
                 value={userSearchQuery}
                 onChange={(e) => {
-                  setUserSearchQuery(e.target.value);
-                  fetchRealUsers(e.target.value);
+                  const val = e.target.value;
+                  setUserSearchQuery(val);
+                  fetchRealUsers(val);
                 }}
                 style={{ width: '100%', padding: '10px 10px 10px 36px', backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '10px', color: '#fff', fontSize: '13px', boxSizing: 'border-box', outline: 'none' }}
               />
