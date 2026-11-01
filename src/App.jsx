@@ -8,19 +8,15 @@ import {
   FiUser,
   FiHeart,
   FiMessageCircle,
-  FiShare2,
   FiSend,
   FiImage,
-  FiPlus,
   FiLogOut,
   FiCheckCircle,
   FiSearch,
-  FiUserPlus,
-  FiUserCheck,
   FiEdit3,
   FiX,
   FiCamera,
-  FiUserCheck as FiFriend
+  FiBell
 } from 'react-icons/fi';
 
 export default function App() {
@@ -42,11 +38,18 @@ export default function App() {
   const [editName, setEditName] = useState('');
   const [editBio, setEditBio] = useState('');
 
+  // Database Users & Search
+  const [dbUsers, setDbUsers] = useState([]);
+  const [userSearchQuery, setUserSearchQuery] = useState('');
+
+  // Notifications
+  const [notifications, setNotifications] = useState([]);
+  const [showNotificationDrawer, setShowNotificationDrawer] = useState(false);
+
   // Posts State
   const [posts, setPosts] = useState([]);
   const [newPostText, setNewPostText] = useState('');
-  const [newPostImage, setNewPostImage] = useState('');
-  const [isPosting, setIsPosting] = useState(false);
+  const [newPostImageBase64, setNewPostImageBase64] = useState(null);
 
   // Reels State
   const [reels, setReels] = useState([
@@ -57,77 +60,124 @@ export default function App() {
   const [newReelTitle, setNewReelTitle] = useState('');
   const [newReelUrl, setNewReelUrl] = useState('');
 
-  // Community Directory & Friends State
-  const [communityUsers, setCommunityUsers] = useState([
-    { id: 'u1', name: 'Omoopeola', username: 'omoopeola', email: 'omoopeola1@gmail.com', bio: 'Verified LCF Pioneer & Community Member.', avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200', verified: true, online: true },
-    { id: 'u2', name: 'David Mark', username: 'david_m', email: 'david@lcf.com', bio: 'Afrobeats producer & song writer.', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=200', verified: false, online: true },
-    { id: 'u3', name: 'Sarah Connor', username: 'sarah_c', email: 'sarah@lcf.com', bio: 'UI/UX Designer & React Developer.', avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=200', verified: false, online: true },
-    { id: 'u4', name: 'Gene Foster', username: 'gene_foster', email: 'gene@lcf.com', bio: 'Commercial building project coordinator.', avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=200', verified: false, online: false }
-  ]);
-  const [friendRequests, setFriendRequests] = useState({});
-  const [friendsList, setFriendsList] = useState({});
-
-  // Chat State
-  const [userSearchQuery, setUserSearchQuery] = useState('');
+  // Real Supabase Chat State
   const [selectedChatUser, setSelectedChatUser] = useState(null);
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
-
-  // Interactions State
+  const [chatPhotoBase64, setChatPhotoBase64] = useState(null);
   const [likedPosts, setLikedPosts] = useState({});
-  const [comments, setComments] = useState({});
-  const [activeCommentInput, setActiveCommentInput] = useState({});
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
-      if (session) initUserData(session.user);
+      if (session) fetchUserProfile(session.user);
       setLoading(false);
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
-      if (session) initUserData(session.user);
+      if (session) fetchUserProfile(session.user);
     });
 
     return () => subscription.unsubscribe();
   }, []);
 
-  const initUserData = (user) => {
-    const isVerifiedSpecial = user.email?.toLowerCase() === 'omoopeola1@gmail.com';
-    const defaultProfile = {
-      id: user.id,
-      email: user.email,
-      username: user.user_metadata?.username || user.email.split('@')[0],
-      full_name: user.user_metadata?.full_name || (isVerifiedSpecial ? 'Omoopeola' : 'LCF Member'),
-      bio: isVerifiedSpecial ? 'Verified Official LCF Pioneer Account.' : 'Frontend Architect & Community Builder.',
-      avatar_url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200',
-      cover_url: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&q=80&w=1000',
-      verified: isVerifiedSpecial,
-      followers: 210,
-      following: 95
-    };
-    setCurrentUser(defaultProfile);
-    setEditName(defaultProfile.full_name);
-    setEditBio(defaultProfile.bio);
+  useEffect(() => {
+    if (session) {
+      fetchRealUsers();
+      fetchPosts();
+    }
+  }, [session]);
 
-    // Ensure user is in community directory
-    setCommunityUsers(prev => {
-      if (!prev.some(u => u.email === user.email)) {
-        return [{
+  // Fetch or Persist User Profile in Supabase
+  const fetchUserProfile = async (user) => {
+    const isVerifiedSpecial = user.email?.toLowerCase() === 'omoopeola1@gmail.com';
+    try {
+      let { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+
+      if (error || !data) {
+        data = {
           id: user.id,
-          name: defaultProfile.full_name,
-          username: defaultProfile.username,
           email: user.email,
-          bio: defaultProfile.bio,
-          avatar: defaultProfile.avatar_url,
-          verified: isVerifiedSpecial,
-          online: true
-        }, ...prev];
+          username: user.user_metadata?.username || user.email.split('@')[0],
+          full_name: user.user_metadata?.full_name || (isVerifiedSpecial ? 'Omoopeola' : 'LCF Member'),
+          bio: isVerifiedSpecial ? 'Verified Official LCF Pioneer Account.' : 'LCF Community Member.',
+          avatar_url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200',
+          cover_url: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&q=80&w=1000',
+          verified: isVerifiedSpecial
+        };
+        await supabase.from('profiles').upsert([data]);
       }
-      return prev;
-    });
+
+      setCurrentUser(data);
+      setEditName(data.full_name);
+      setEditBio(data.bio || '');
+    } catch (e) {
+      console.log('Profile fetch error:', e);
+    }
   };
+
+  const fetchRealUsers = async (query = '') => {
+    try {
+      let req = supabase.from('profiles').select('*');
+      if (query.trim()) {
+        req = req.or(`username.ilike.%${query}%,full_name.ilike.%${query}%,email.ilike.%${query}%`);
+      }
+      const { data } = await req.limit(30);
+      if (data) setDbUsers(data);
+    } catch (e) {
+      console.log('Users fetch error:', e);
+    }
+  };
+
+  const fetchPosts = async () => {
+    try {
+      const { data } = await supabase.from('posts').select('*').order('created_at', { ascending: false });
+      if (data) setPosts(data);
+    } catch (e) {
+      console.log('Posts fetch error:', e);
+    }
+  };
+
+  // Fetch messages between current user and selected chat user
+  useEffect(() => {
+    if (!session || !selectedChatUser) return;
+
+    const fetchMessages = async () => {
+      const { data, error } = await supabase
+        .from('messages')
+        .select('*')
+        .or(`and(sender_id.eq.${session.user.id},recipient_id.eq.${selectedChatUser.id}),and(sender_id.eq.${selectedChatUser.id},recipient_id.eq.${session.user.id})`)
+        .order('created_at', { ascending: true });
+
+      if (!error && data) {
+        setMessages(data);
+      }
+    };
+
+    fetchMessages();
+
+    // Realtime subscription for instant message delivery
+    const channel = supabase
+      .channel('public:messages')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, payload => {
+        if (
+          (payload.new.sender_id === session.user.id && payload.new.recipient_id === selectedChatUser.id) ||
+          (payload.new.sender_id === selectedChatUser.id && payload.new.recipient_id === session.user.id)
+        ) {
+          setMessages(prev => [...prev, payload.new]);
+        }
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [session, selectedChatUser]);
 
   const handleAuth = async (e) => {
     e.preventDefault();
@@ -161,36 +211,42 @@ export default function App() {
     setCurrentUser(null);
   };
 
-  // Handle Device File Upload for Profile Photo
-  const handleFileUpload = (e, targetField) => {
+  // Convert Device Photo and Save Permanently in Supabase Profile
+  const handleDeviceFileUpload = async (e, field) => {
     const file = e.target.files[0];
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onloadend = () => {
-      const base64String = reader.result;
-      if (targetField === 'avatar') {
-        setCurrentUser(prev => ({ ...prev, avatar_url: base64String }));
-      } else if (targetField === 'cover') {
-        setCurrentUser(prev => ({ ...prev, cover_url: base64String }));
+    reader.onloadend = async () => {
+      const base64 = reader.result;
+      const updated = { ...currentUser, [field]: base64 };
+      setCurrentUser(updated);
+
+      try {
+        await supabase.from('profiles').upsert([updated]);
+      } catch (err) {
+        console.log('Error saving photo:', err);
       }
     };
     reader.readAsDataURL(file);
   };
 
-  const handleSaveProfile = (e) => {
+  const handleSaveProfile = async (e) => {
     e.preventDefault();
-    setCurrentUser(prev => ({
-      ...prev,
-      full_name: editName,
-      bio: editBio
-    }));
+    const updated = { ...currentUser, full_name: editName, bio: editBio };
+    setCurrentUser(updated);
     setIsEditingProfile(false);
+
+    try {
+      await supabase.from('profiles').upsert([updated]);
+    } catch (err) {
+      console.log('Error updating profile:', err);
+    }
   };
 
-  const handleCreatePost = (e) => {
+  const handleCreatePost = async (e) => {
     e.preventDefault();
-    if (!newPostText.trim()) return;
+    if (!newPostText.trim() && !newPostImageBase64) return;
 
     const newPost = {
       id: Date.now().toString(),
@@ -199,63 +255,43 @@ export default function App() {
       avatar: currentUser?.avatar_url,
       verified: currentUser?.verified,
       content: newPostText,
-      image: newPostImage.trim() ? newPostImage : null,
+      image: newPostImageBase64,
       likes: 0,
       created_at: 'Just now'
     };
 
     setPosts([newPost, ...posts]);
     setNewPostText('');
-    setNewPostImage('');
-    setIsPosting(false);
+    setNewPostImageBase64(null);
+
+    try {
+      await supabase.from('posts').insert([newPost]);
+    } catch (err) {
+      console.log('Post error:', err);
+    }
   };
 
-  const handleCreateReel = (e) => {
+  // Send Two-Way Persistent Message in Supabase
+  const handleSendMessage = async (e) => {
     e.preventDefault();
-    if (!newReelTitle.trim() || !newReelUrl.trim()) return;
+    if ((!newMessage.trim() && !chatPhotoBase64) || !selectedChatUser) return;
 
-    const newReel = {
-      id: Date.now().toString(),
-      title: newReelTitle,
-      user: currentUser?.username || 'user',
-      views: '1 view',
-      url: newReelUrl
+    const msg = {
+      sender_id: session.user.id,
+      recipient_id: selectedChatUser.id,
+      text: newMessage,
+      image: chatPhotoBase64
     };
 
-    setReels([newReel, ...reels]);
-    setNewReelTitle('');
-    setNewReelUrl('');
-    setIsCreatingReel(false);
+    const { data, error } = await supabase.from('messages').insert([msg]).select().single();
+    if (!error && data) {
+      setMessages(prev => [...prev, data]);
+      setNewMessage('');
+      setChatPhotoBase64(null);
+    }
   };
 
-  const toggleLike = (postId) => {
-    setLikedPosts(prev => ({ ...prev, [postId]: !prev[postId] }));
-    setPosts(posts.map(p => p.id === postId ? { ...p, likes: likedPosts[postId] ? p.likes - 1 : p.likes + 1 } : p));
-  };
-
-  const sendFriendRequest = (usernameKey) => {
-    setFriendRequests(prev => ({ ...prev, [usernameKey]: 'pending' }));
-    alert(`Friend request sent to @${usernameKey}!`);
-  };
-
-  const acceptFriendRequest = (usernameKey) => {
-    setFriendsList(prev => ({ ...prev, [usernameKey]: true }));
-    setFriendRequests(prev => ({ ...prev, [usernameKey]: 'accepted' }));
-  };
-
-  const handleSendMessage = (e) => {
-    e.preventDefault();
-    if (!newMessage.trim() || !selectedChatUser) return;
-
-    setMessages([...messages, { id: Date.now(), sender: 'you', text: newMessage, time: 'Now' }]);
-    setNewMessage('');
-  };
-
-  const filteredUsers = communityUsers.filter(u =>
-    u.name.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
-    u.username.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
-    u.email.toLowerCase().includes(userSearchQuery.toLowerCase())
-  );
+  const unreadCount = notifications.filter(n => !n.read).length;
 
   if (loading) {
     return (
@@ -275,7 +311,7 @@ export default function App() {
         <div style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '16px', padding: '32px', width: '100%', maxWidth: '400px' }}>
           <div style={{ textAlign: 'center', marginBottom: '24px' }}>
             <h1 style={{ fontSize: '22px', fontWeight: '700', color: '#fff', margin: '0 0 6px' }}>LCF Social Hub</h1>
-            <p style={{ fontSize: '13px', color: '#94a3b8', margin: 0 }}>Verified Accounts & Global Friends</p>
+            <p style={{ fontSize: '13px', color: '#94a3b8', margin: 0 }}>Permanent Profiles & Real-Time Chats</p>
           </div>
 
           {authError && (
@@ -308,7 +344,7 @@ export default function App() {
             <input
               type="email"
               required
-              placeholder="Email address (e.g. omoopeola1@gmail.com)"
+              placeholder="Email address"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               style={{ width: '100%', padding: '12px', backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
@@ -340,10 +376,10 @@ export default function App() {
 
   // --- MAIN APP ---
   return (
-    <div style={{ backgroundColor: '#0b0f17', color: '#f8fafc', minHeight: '100vh', paddingBottom: '70px', fontFamily: 'Inter, system-ui, sans-serif' }}>
+    <div style={{ backgroundColor: '#0b0f17', color: '#f8fafc', minHeight: '100vh', paddingBottom: '75px', fontFamily: 'Inter, system-ui, sans-serif' }}>
       
-      {/* Top Header */}
-      <header style={{ position: 'sticky', top: 0, zIndex: 100, backgroundColor: 'rgba(15, 23, 42, 0.9)', backdropFilter: 'blur(10px)', borderBottom: '1px solid #1e293b', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      {/* Header */}
+      <header style={{ position: 'sticky', top: 0, zIndex: 100, backgroundColor: 'rgba(15, 23, 42, 0.95)', backdropFilter: 'blur(10px)', borderBottom: '1px solid #1e293b', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'linear-gradient(135deg, #2563eb, #1d4ed8)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 'bold', fontSize: '12px' }}>
             LCF
@@ -351,11 +387,11 @@ export default function App() {
           <span style={{ fontSize: '16px', fontWeight: '700' }}>LCF Hub</span>
         </div>
 
-        {/* Desktop Navbar */}
+        {/* Navigation */}
         <nav style={{ display: 'flex', gap: '4px', backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '24px', padding: '3px' }}>
           {[
             { id: 'feed', label: 'Feed', icon: <FiHome /> },
-            { id: 'find', label: 'Find Friends', icon: <FiUsers /> },
+            { id: 'find', label: 'Friends', icon: <FiUsers /> },
             { id: 'reels', label: 'Reels', icon: <FiVideo /> },
             { id: 'chats', label: 'Chats', icon: <FiMessageSquare /> },
             { id: 'profile', label: 'Profile', icon: <FiUser /> }
@@ -378,14 +414,17 @@ export default function App() {
               }}
             >
               {tab.icon}
-              <span style={{ display: window.innerWidth < 640 && activeTab !== tab.id ? 'none' : 'inline' }}>{tab.label}</span>
+              <span>{tab.label}</span>
             </button>
           ))}
         </nav>
 
-        <button onClick={handleSignOut} style={{ background: '#1e293b', border: 'none', color: '#94a3b8', padding: '6px', borderRadius: '8px', cursor: 'pointer' }}>
-          <FiLogOut size={16} />
-        </button>
+        {/* Notifications & Sign Out */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <button onClick={handleSignOut} style={{ background: '#1e293b', border: 'none', color: '#94a3b8', padding: '8px', borderRadius: '8px', cursor: 'pointer' }} title="Sign Out">
+            <FiLogOut size={16} />
+          </button>
+        </div>
       </header>
 
       {/* Main Container */}
@@ -394,7 +433,6 @@ export default function App() {
         {/* --- TAB 1: FEED --- */}
         {activeTab === 'feed' && (
           <div>
-            {/* Create Post */}
             <div style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '12px', padding: '14px', marginBottom: '16px' }}>
               <div style={{ display: 'flex', gap: '10px' }}>
                 <img src={currentUser?.avatar_url} alt="avatar" style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover' }} />
@@ -407,41 +445,37 @@ export default function App() {
                 />
               </div>
 
-              {isPosting && (
-                <div style={{ marginTop: '8px' }}>
-                  <input
-                    type="text"
-                    placeholder="Paste image URL (optional)"
-                    value={newPostImage}
-                    onChange={(e) => setNewPostImage(e.target.value)}
-                    style={{ width: '100%', padding: '8px', backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '6px', color: '#fff', fontSize: '12px' }}
-                  />
+              {newPostImageBase64 && (
+                <div style={{ position: 'relative', marginTop: '10px' }}>
+                  <img src={newPostImageBase64} alt="preview" style={{ width: '100%', maxHeight: '200px', objectFit: 'cover', borderRadius: '8px' }} />
+                  <button onClick={() => setNewPostImageBase64(null)} style={{ position: 'absolute', top: 6, right: 6, backgroundColor: 'rgba(0,0,0,0.7)', border: 'none', color: '#fff', borderRadius: '50%', padding: '4px', cursor: 'pointer' }}>
+                    <FiX size={14} />
+                  </button>
                 </div>
               )}
 
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '10px', paddingTop: '10px', borderTop: '1px solid #1e293b' }}>
-                <button onClick={() => setIsPosting(!isPosting)} style={{ background: 'none', border: 'none', color: '#60a5fa', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
-                  <FiImage /> Attach Photo
-                </button>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#60a5fa', fontSize: '12px', cursor: 'pointer' }}>
+                  <FiImage size={16} /> Attach Photo from Phone
+                  <input type="file" accept="image/*" onChange={(e) => handleDeviceFileUpload(e, 'newPostImageBase64')} style={{ display: 'none' }} />
+                </label>
+
                 <button onClick={handleCreatePost} style={{ padding: '6px 16px', backgroundColor: '#2563eb', border: 'none', borderRadius: '16px', color: '#fff', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
                   Post
                 </button>
               </div>
             </div>
 
-            {/* Posts Stream */}
             {posts.map(post => (
               <div key={post.id} style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '12px', padding: '16px', marginBottom: '14px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <img src={post.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200'} alt="u" style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover' }} />
-                    <div>
-                      <div style={{ fontSize: '13px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        {post.user_name}
-                        {post.verified && <FiCheckCircle size={13} color="#3b82f6" title="Verified Account" />}
-                      </div>
-                      <div style={{ fontSize: '11px', color: '#94a3b8' }}>@{post.username} • {post.created_at}</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+                  <img src={post.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200'} alt="u" style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover' }} />
+                  <div>
+                    <div style={{ fontSize: '13px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      {post.user_name}
+                      {post.verified && <FiCheckCircle size={13} color="#3b82f6" title="Verified Account" />}
                     </div>
+                    <div style={{ fontSize: '11px', color: '#94a3b8' }}>@{post.username} • {post.created_at}</div>
                   </div>
                 </div>
 
@@ -452,68 +486,55 @@ export default function App() {
                 )}
 
                 <div style={{ display: 'flex', gap: '16px', borderTop: '1px solid #1e293b', paddingTop: '10px', color: '#94a3b8', fontSize: '12px' }}>
-                  <button onClick={() => toggleLike(post.id)} style={{ background: 'none', border: 'none', color: likedPosts[post.id] ? '#ef4444' : '#94a3b8', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
+                  <button onClick={() => setLikedPosts(prev => ({ ...prev, [post.id]: !prev[post.id] }))} style={{ background: 'none', border: 'none', color: likedPosts[post.id] ? '#ef4444' : '#94a3b8', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
                     <FiHeart fill={likedPosts[post.id] ? '#ef4444' : 'none'} /> {post.likes}
                   </button>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <FiMessageCircle /> {(comments[post.id] || []).length}
-                  </div>
                 </div>
               </div>
             ))}
           </div>
         )}
 
-        {/* --- TAB 2: FIND FRIENDS & MEET NEW MEMBERS --- */}
+        {/* --- TAB 2: FIND FRIENDS --- */}
         {activeTab === 'find' && (
           <div>
             <div style={{ marginBottom: '16px' }}>
-              <h2 style={{ fontSize: '16px', fontWeight: '700', margin: '0 0 4px 0' }}>Find Friends & Meet Members</h2>
-              <p style={{ fontSize: '12px', color: '#94a3b8', margin: 0 }}>Search by name or username to connect, send friend requests, or start chatting.</p>
+              <h2 style={{ fontSize: '16px', fontWeight: '700', margin: '0 0 4px 0' }}>Find Friends & Registered Members</h2>
+              <p style={{ fontSize: '12px', color: '#94a3b8', margin: 0 }}>Search registered members in the live database.</p>
             </div>
 
-            {/* Search Bar */}
             <div style={{ position: 'relative', marginBottom: '16px' }}>
               <FiSearch style={{ position: 'absolute', left: '12px', top: '12px', color: '#94a3b8', fontSize: '14px' }} />
               <input
                 type="text"
-                placeholder="Search by name, username, or email..."
+                placeholder="Search by name, username or email..."
                 value={userSearchQuery}
-                onChange={(e) => setUserSearchQuery(e.target.value)}
+                onChange={(e) => {
+                  setUserSearchQuery(e.target.value);
+                  fetchRealUsers(e.target.value);
+                }}
                 style={{ width: '100%', padding: '10px 10px 10px 36px', backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '10px', color: '#fff', fontSize: '13px', boxSizing: 'border-box', outline: 'none' }}
               />
             </div>
 
-            {/* Users Grid */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '14px' }}>
-              {filteredUsers.map(user => (
+              {dbUsers.map(user => (
                 <div key={user.id} style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '12px', padding: '16px', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
-                  <div style={{ position: 'relative', marginBottom: '10px' }}>
-                    <img src={user.avatar} alt="u" style={{ width: '64px', height: '64px', borderRadius: '50%', objectFit: 'cover' }} />
-                    {user.online && <div style={{ position: 'absolute', bottom: 2, right: 2, width: '12px', height: '12px', backgroundColor: '#22c55e', borderRadius: '50%', border: '2px solid #151c2c' }}></div>}
-                  </div>
+                  <img src={user.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200'} alt="u" style={{ width: '64px', height: '64px', borderRadius: '50%', objectFit: 'cover', marginBottom: '10px' }} />
 
                   <div style={{ fontSize: '14px', fontWeight: '700', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', marginBottom: '2px' }}>
-                    {user.name}
+                    {user.full_name}
                     {user.verified && <FiCheckCircle size={13} color="#3b82f6" title="Verified Account" />}
                   </div>
                   <div style={{ fontSize: '11px', color: '#60a5fa', marginBottom: '8px' }}>@{user.username}</div>
-                  <p style={{ fontSize: '12px', color: '#94a3b8', lineHeight: '1.4', margin: '0 0 14px 0', flex: 1 }}>{user.bio}</p>
+                  <p style={{ fontSize: '12px', color: '#94a3b8', lineHeight: '1.4', margin: '0 0 14px 0', flex: 1 }}>{user.bio || 'LCF Member'}</p>
 
-                  <div style={{ display: 'flex', gap: '8px', width: '100%' }}>
-                    <button
-                      onClick={() => sendFriendRequest(user.username)}
-                      style={{ flex: 1, padding: '6px', backgroundColor: friendRequests[user.username] ? '#1e293b' : '#2563eb', border: 'none', borderRadius: '6px', color: '#fff', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}
-                    >
-                      {friendRequests[user.username] === 'pending' ? 'Request Sent' : 'Add Friend'}
-                    </button>
-                    <button
-                      onClick={() => { setSelectedChatUser(user); setActiveTab('chats'); }}
-                      style={{ padding: '6px 10px', backgroundColor: '#1e293b', border: 'none', borderRadius: '6px', color: '#60a5fa', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}
-                    >
-                      Chat
-                    </button>
-                  </div>
+                  <button
+                    onClick={() => { setSelectedChatUser(user); setActiveTab('chats'); }}
+                    style={{ width: '100%', padding: '6px', backgroundColor: '#2563eb', border: 'none', borderRadius: '6px', color: '#fff', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}
+                  >
+                    Chat
+                  </button>
                 </div>
               ))}
             </div>
@@ -525,34 +546,7 @@ export default function App() {
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
               <h2 style={{ fontSize: '16px', fontWeight: '700', margin: 0 }}>Community Reels</h2>
-              <button onClick={() => setIsCreatingReel(true)} style={{ padding: '6px 14px', backgroundColor: '#2563eb', border: 'none', borderRadius: '8px', color: '#fff', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
-                Create Reel
-              </button>
             </div>
-
-            {isCreatingReel && (
-              <div style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '12px', padding: '14px', marginBottom: '16px' }}>
-                <h3 style={{ fontSize: '14px', fontWeight: '600', marginBottom: '10px' }}>Publish New Reel</h3>
-                <input
-                  type="text"
-                  placeholder="Reel title..."
-                  value={newReelTitle}
-                  onChange={(e) => setNewReelTitle(e.target.value)}
-                  style={{ width: '100%', padding: '10px', backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', color: '#fff', fontSize: '12px', marginBottom: '8px', boxSizing: 'border-box' }}
-                />
-                <input
-                  type="text"
-                  placeholder="Image/Video URL..."
-                  value={newReelUrl}
-                  onChange={(e) => setNewReelUrl(e.target.value)}
-                  style={{ width: '100%', padding: '10px', backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', color: '#fff', fontSize: '12px', marginBottom: '10px', boxSizing: 'border-box' }}
-                />
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <button onClick={handleCreateReel} style={{ padding: '6px 14px', backgroundColor: '#2563eb', border: 'none', borderRadius: '6px', color: '#fff', fontSize: '12px', cursor: 'pointer' }}>Publish</button>
-                  <button onClick={() => setIsCreatingReel(false)} style={{ padding: '6px 14px', backgroundColor: '#1e293b', border: 'none', borderRadius: '6px', color: '#94a3b8', fontSize: '12px', cursor: 'pointer' }}>Cancel</button>
-                </div>
-              </div>
-            )}
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '14px' }}>
               {reels.map(reel => (
@@ -568,7 +562,7 @@ export default function App() {
           </div>
         )}
 
-        {/* --- TAB 4: CHATS & MESSAGING REQUESTS --- */}
+        {/* --- TAB 4: PERMANENT TWO-WAY CHATS --- */}
         {activeTab === 'chats' && (
           <div style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '14px', height: '520px', display: 'grid', gridTemplateColumns: window.innerWidth < 768 ? '1fr' : '260px 1fr', overflow: 'hidden' }}>
             
@@ -577,19 +571,16 @@ export default function App() {
               <h3 style={{ fontSize: '14px', fontWeight: '700', margin: '0 0 10px 0' }}>Direct Messages</h3>
               
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', overflowY: 'auto', maxHeight: '420px' }}>
-                {communityUsers.map(user => (
+                {dbUsers.filter(u => u.id !== session?.user?.id).map(user => (
                   <div
                     key={user.id}
                     onClick={() => setSelectedChatUser(user)}
                     style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px', borderRadius: '8px', backgroundColor: selectedChatUser?.id === user.id ? '#1e293b' : 'transparent', cursor: 'pointer' }}
                   >
-                    <div style={{ position: 'relative' }}>
-                      <img src={user.avatar} alt="u" style={{ width: '32px', height: '32px', borderRadius: '50%', objectFit: 'cover' }} />
-                      {user.online && <div style={{ position: 'absolute', bottom: 0, right: 0, width: '8px', height: '8px', backgroundColor: '#22c55e', borderRadius: '50%', border: '2px solid #0f172a' }}></div>}
-                    </div>
+                    <img src={user.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200'} alt="u" style={{ width: '32px', height: '32px', borderRadius: '50%', objectFit: 'cover' }} />
                     <div>
                       <div style={{ fontSize: '12px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '3px' }}>
-                        {user.name}
+                        {user.full_name}
                         {user.verified && <FiCheckCircle size={10} color="#3b82f6" />}
                       </div>
                       <div style={{ fontSize: '10px', color: '#94a3b8' }}>@{user.username}</div>
@@ -599,7 +590,7 @@ export default function App() {
               </div>
             </div>
 
-            {/* Chat Box */}
+            {/* Chat Conversation View */}
             <div style={{ display: window.innerWidth < 768 && !selectedChatUser ? 'none' : 'flex', flexDirection: 'column', height: '100%' }}>
               {selectedChatUser ? (
                 <>
@@ -608,32 +599,65 @@ export default function App() {
                       {window.innerWidth < 768 && (
                         <button onClick={() => setSelectedChatUser(null)} style={{ background: 'none', border: 'none', color: '#60a5fa', fontSize: '12px', cursor: 'pointer', marginRight: '4px' }}>Back</button>
                       )}
-                      <img src={selectedChatUser.avatar} alt="u" style={{ width: '28px', height: '28px', borderRadius: '50%', objectFit: 'cover' }} />
+                      <img src={selectedChatUser.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200'} alt="u" style={{ width: '28px', height: '28px', borderRadius: '50%', objectFit: 'cover' }} />
                       <div>
                         <div style={{ fontSize: '13px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                          {selectedChatUser.name}
+                          {selectedChatUser.full_name}
                           {selectedChatUser.verified && <FiCheckCircle size={11} color="#3b82f6" />}
                         </div>
-                        <div style={{ fontSize: '10px', color: '#22c55e' }}>Online</div>
+                        <div style={{ fontSize: '10px', color: '#22c55e' }}>Active</div>
                       </div>
                     </div>
                   </div>
 
                   <div style={{ flex: 1, padding: '16px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                    <div style={{ alignSelf: 'flex-start', backgroundColor: '#1e293b', padding: '8px 12px', borderRadius: '10px', fontSize: '12px', maxWidth: '75%' }}>
-                      Hello! Let's connect on LCF Social Hub.
-                    </div>
-                    {messages.map(m => (
-                      <div key={m.id} style={{ alignSelf: m.sender === 'you' ? 'flex-end' : 'flex-start', backgroundColor: m.sender === 'you' ? '#2563eb' : '#1e293b', color: '#fff', padding: '8px 12px', borderRadius: '10px', fontSize: '12px', maxWidth: '75%' }}>
-                        {m.text}
-                      </div>
-                    ))}
+                    {messages.map(m => {
+                      const isMe = m.sender_id === session.user.id;
+                      return (
+                        <div
+                          key={m.id}
+                          style={{
+                            alignSelf: isMe ? 'flex-end' : 'flex-start',
+                            backgroundColor: isMe ? '#2563eb' : '#1e293b',
+                            color: '#fff',
+                            padding: '10px 14px',
+                            borderRadius: '12px',
+                            fontSize: '12px',
+                            maxWidth: '75%'
+                          }}
+                        >
+                          {m.text && <div>{m.text}</div>}
+                          {m.image && <img src={m.image} alt="shared" style={{ width: '100%', borderRadius: '8px', marginTop: '6px', maxHeight: '180px', objectFit: 'cover' }} />}
+                        </div>
+                      );
+                    })}
                   </div>
 
-                  <form onSubmit={handleSendMessage} style={{ padding: '10px', borderTop: '1px solid #1e293b', display: 'flex', gap: '8px' }}>
+                  {chatPhotoBase64 && (
+                    <div style={{ padding: '8px 14px', borderTop: '1px solid #1e293b', position: 'relative' }}>
+                      <img src={chatPhotoBase64} alt="attachment" style={{ height: '60px', borderRadius: '6px' }} />
+                      <button onClick={() => setChatPhotoBase64(null)} style={{ position: 'absolute', top: 4, left: 70, backgroundColor: 'rgba(0,0,0,0.7)', border: 'none', color: '#fff', borderRadius: '50%', padding: '2px', cursor: 'pointer' }}>
+                        <FiX size={12} />
+                      </button>
+                    </div>
+                  )}
+
+                  <form onSubmit={handleSendMessage} style={{ padding: '10px', borderTop: '1px solid #1e293b', display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <label style={{ cursor: 'pointer', color: '#60a5fa', display: 'flex', alignItems: 'center' }} title="Send Photo">
+                      <FiImage size={18} />
+                      <input type="file" accept="image/*" onChange={(e) => {
+                        const file = e.target.files[0];
+                        if (file) {
+                          const reader = new FileReader();
+                          reader.onloadend = () => setChatPhotoBase64(reader.result);
+                          reader.readAsDataURL(file);
+                        }
+                      }} style={{ display: 'none' }} />
+                    </label>
+
                     <input
                       type="text"
-                      placeholder={`Message ${selectedChatUser.name}...`}
+                      placeholder={`Message ${selectedChatUser.full_name}...`}
                       value={newMessage}
                       onChange={(e) => setNewMessage(e.target.value)}
                       style={{ flex: 1, padding: '8px 12px', backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', color: '#fff', fontSize: '12px', outline: 'none' }}
@@ -645,7 +669,7 @@ export default function App() {
                 </>
               ) : (
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#94a3b8', fontSize: '13px' }}>
-                  Select a contact or search for a friend to start messaging.
+                  Select a registered user to start a conversation.
                 </div>
               )}
             </div>
@@ -653,13 +677,13 @@ export default function App() {
           </div>
         )}
 
-        {/* --- TAB 5: PROFILE WITH DEVICE FILE UPLOAD --- */}
+        {/* --- TAB 5: PROFILE --- */}
         {activeTab === 'profile' && (
           <div style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '14px', overflow: 'hidden' }}>
             <div style={{ height: '140px', backgroundImage: `url(${currentUser?.cover_url})`, backgroundSize: 'cover', backgroundPosition: 'center', position: 'relative' }}>
               <label style={{ position: 'absolute', bottom: '10px', right: '10px', backgroundColor: 'rgba(0,0,0,0.7)', padding: '6px 10px', borderRadius: '6px', fontSize: '11px', cursor: 'pointer', color: '#fff', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                <FiCamera /> Change Cover
-                <input type="file" accept="image/*" onChange={(e) => handleFileUpload(e, 'cover')} style={{ display: 'none' }} />
+                <FiCamera /> Cover Photo
+                <input type="file" accept="image/*" onChange={(e) => handleDeviceFileUpload(e, 'cover_url')} style={{ display: 'none' }} />
               </label>
             </div>
 
@@ -667,9 +691,9 @@ export default function App() {
               <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: '12px' }}>
                 <div style={{ position: 'relative' }}>
                   <img src={currentUser?.avatar_url} alt="avatar" style={{ width: '90px', height: '90px', borderRadius: '50%', border: '4px solid #151c2c', objectFit: 'cover' }} />
-                  <label style={{ position: 'absolute', bottom: 0, right: 0, backgroundColor: '#2563eb', padding: '6px', borderRadius: '50%', cursor: 'pointer', color: '#fff' }} title="Upload from phone">
+                  <label style={{ position: 'absolute', bottom: 0, right: 0, backgroundColor: '#2563eb', padding: '6px', borderRadius: '50%', cursor: 'pointer', color: '#fff' }}>
                     <FiCamera size={12} />
-                    <input type="file" accept="image/*" onChange={(e) => handleFileUpload(e, 'avatar')} style={{ display: 'none' }} />
+                    <input type="file" accept="image/*" onChange={(e) => handleDeviceFileUpload(e, 'avatar_url')} style={{ display: 'none' }} />
                   </label>
                 </div>
 
@@ -684,11 +708,6 @@ export default function App() {
               </h2>
               <div style={{ fontSize: '12px', color: '#60a5fa', marginBottom: '10px' }}>@{currentUser?.username} • {currentUser?.email}</div>
               <p style={{ fontSize: '13px', color: '#cbd5e1', lineHeight: '1.4', margin: '0 0 14px 0' }}>{currentUser?.bio}</p>
-
-              <div style={{ display: 'flex', gap: '16px', fontSize: '13px', color: '#94a3b8' }}>
-                <div><strong style={{ color: '#fff' }}>{currentUser?.followers}</strong> Followers</div>
-                <div><strong style={{ color: '#fff' }}>{currentUser?.following}</strong> Following</div>
-              </div>
             </div>
 
             {/* Edit Profile Modal */}
@@ -720,13 +739,13 @@ export default function App() {
 
       {/* Mobile Bottom Navigation Bar */}
       {window.innerWidth < 768 && (
-        <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(15, 23, 42, 0.95)', borderTop: '1px solid #1e293b', display: 'flex', justifyContent: 'space-around', padding: '10px 0', zIndex: 100 }}>
+        <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(15, 23, 42, 0.98)', borderTop: '1px solid #1e293b', display: 'flex', justifyContent: 'space-around', padding: '12px 0', zIndex: 100 }}>
           {[
-            { id: 'feed', icon: <FiHome size={20} /> },
-            { id: 'find', icon: <FiUsers size={20} /> },
-            { id: 'reels', icon: <FiVideo size={20} /> },
-            { id: 'chats', icon: <FiMessageSquare size={20} /> },
-            { id: 'profile', icon: <FiUser size={20} /> }
+            { id: 'feed', icon: <FiHome size={22} /> },
+            { id: 'find', icon: <FiUsers size={22} /> },
+            { id: 'reels', icon: <FiVideo size={22} /> },
+            { id: 'chats', icon: <FiMessageSquare size={22} /> },
+            { id: 'profile', icon: <FiUser size={22} /> }
           ].map(tab => (
             <button
               key={tab.id}
