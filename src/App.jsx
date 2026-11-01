@@ -1,466 +1,730 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  MessageSquare, Video, Home, Users, User, Shield, AlertTriangle, 
-  Heart, Repeat, Share2, Send, Plus, Search, CheckCheck, ThumbsUp, 
-  Flag, Lock, Award, Compass, Radio, Sparkles, Moon, Sun, Music2, Bookmark, Eye
-} from 'lucide-react';
 import { supabase } from './supabaseClient';
+import {
+  FiHome,
+  FiMessageSquare,
+  FiVideo,
+  FiUsers,
+  FiUser,
+  FiHeart,
+  FiMessageCircle,
+  FiShare2,
+  FiSend,
+  FiImage,
+  FiPlus,
+  FiLogOut,
+  FiCheckCircle,
+  FiSearch,
+  FiUserPlus,
+  FiUserCheck,
+  FiMoreHorizontal,
+  FiSun,
+  FiMoon
+} from 'react-icons/fi';
 
 export default function App() {
+  const [session, setSession] = useState(null);
   const [activeTab, setActiveTab] = useState('feed');
-  const [isDarkMode, setIsDarkMode] = useState(true);
-  const [showReportModal, setShowReportModal] = useState(false);
-  const [showTermsModal, setShowTermsModal] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  // User & Social States
-  const [posts, setPosts] = useState([
-    {
-      id: 1,
-      author: 'lekkxygold',
-      handle: '@lekkxygold',
-      avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
-      content: '🚀 Welcome to LCF (Lekkxy Chat Free)! Connecting feeds, reels, channels, and communities into one seamless platform.',
-      likes: 142,
-      reposts: 28,
-      comments: 14,
-      isLiked: false
-    },
-    {
-      id: 2,
-      author: 'Community Bot',
-      handle: '@system',
-      avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150',
-      content: '⚡ High speed real-time communication enabled. Check out the Reels feed and public Channels!',
-      likes: 89,
-      reposts: 12,
-      comments: 5,
-      isLiked: false
-    }
-  ]);
+  // Auth State
+  const [authMode, setAuthMode] = useState('login');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [username, setUsername] = useState('');
+  const [fullName, setFullName] = useState('');
+  const [authError, setAuthError] = useState('');
 
-  const [reels, setReels] = useState([
-    {
-      id: 1,
-      author: 'lekkxygold',
-      caption: 'Testing the new LCF ultra-fast Reels player! 🎬⚡',
-      audio: 'Original Audio - lekkxygold',
-      likes: 542,
-      comments: 41,
-      isLiked: false
-    }
-  ]);
-
-  const [messages, setMessages] = useState([
-    { id: 1, sender: 'System', text: 'Welcome to the #general channel!', time: '12:00 PM' },
-    { id: 2, sender: 'lekkxygold', text: 'Hey everyone, LCF is live!', time: '12:02 PM' }
-  ]);
-
+  // App Data
+  const [currentUser, setCurrentUser] = useState(null);
+  const [posts, setPosts] = useState([]);
   const [newPostText, setNewPostText] = useState('');
-  const [newMessageText, setNewMessageText] = useState('');
-  const [isFollowing, setIsFollowing] = useState(false);
+  const [newPostImage, setNewPostImage] = useState('');
+  const [isPosting, setIsPosting] = useState(false);
 
-  // Handlers
-  const handleLikePost = (id) => {
-    setPosts(posts.map(post => {
-      if (post.id === id) {
-        return {
-          ...post,
-          likes: post.isLiked ? post.likes - 1 : post.likes + 1,
-          isLiked: !post.isLiked
+  // Chat Data
+  const [chats, setChats] = useState([]);
+  const [selectedChatUser, setSelectedChatUser] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [newMessage, setNewMessage] = useState('');
+
+  // Followers & Like state local trackers
+  const [likedPosts, setLikedPosts] = useState({});
+  const [followedUsers, setFollowedUsers] = useState({});
+  const [comments, setComments] = useState({});
+  const [activeCommentInput, setActiveCommentInput] = useState({});
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      if (session) fetchUserProfile(session.user);
+      setLoading(false);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      if (session) fetchUserProfile(session.user);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    fetchPosts();
+  }, []);
+
+  const fetchUserProfile = async (user) => {
+    try {
+      let { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+
+      if (error && error.code === 'PGRST116') {
+        // Fallback demo user details if database table profile missing
+        data = {
+          id: user.id,
+          username: user.email.split('@')[0],
+          full_name: user.email.split('@')[0],
+          avatar_url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200',
+          followers: 142,
+          following: 89
         };
       }
-      return post;
-    }));
+      setCurrentUser(data || {
+        id: user.id,
+        username: user.email.split('@')[0],
+        full_name: 'LCF Member',
+        avatar_url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200',
+        followers: 120,
+        following: 45
+      });
+    } catch (e) {
+      console.log('Error fetching user profile:', e);
+    }
   };
 
-  const handleLikeReel = (id) => {
-    setReels(reels.map(reel => {
-      if (reel.id === id) {
-        return {
-          ...reel,
-          likes: reel.isLiked ? reel.likes - 1 : reel.likes + 1,
-          isLiked: !reel.isLiked
-        };
+  const handleAuth = async (e) => {
+    e.preventDefault();
+    setAuthError('');
+    setLoading(true);
+
+    try {
+      if (authMode === 'signup') {
+        const { data, error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            data: { username, full_name: fullName }
+          }
+        });
+        if (error) throw error;
+        alert('Registration successful! Please check your email or log in.');
+        setAuthMode('login');
+      } else {
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) throw error;
       }
-      return reel;
-    }));
+    } catch (err) {
+      setAuthError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    setSession(null);
+    setCurrentUser(null);
+  };
+
+  const fetchPosts = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('posts')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (!error && data && data.length > 0) {
+        setPosts(data);
+      } else {
+        // High quality initial seed posts
+        setPosts([
+          {
+            id: '1',
+            user_name: 'David Mark',
+            username: 'david_m',
+            avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=200',
+            content: '🚀 Welcome to the new LCF Social & Chat Hub! Designed with real-time connectivity, clean messaging, and global feeds. Drop a comment below!',
+            image: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&q=80&w=800',
+            likes: 24,
+            created_at: '2 hours ago'
+          },
+          {
+            id: '2',
+            user_name: 'lekkxygold',
+            username: 'lekkxygold',
+            avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200',
+            content: 'Building ultra-fast modern web applications using React & Supabase. Everything synced live!',
+            image: null,
+            likes: 58,
+            created_at: '5 hours ago'
+          }
+        ]);
+      }
+    } catch (e) {
+      console.log('Error loading posts:', e);
+    }
   };
 
   const handleCreatePost = (e) => {
     e.preventDefault();
     if (!newPostText.trim()) return;
 
-    const newEntry = {
-      id: Date.now(),
-      author: 'You',
-      handle: '@user',
-      avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150',
+    const newPost = {
+      id: Date.now().toString(),
+      user_name: currentUser?.full_name || currentUser?.username || 'You',
+      username: currentUser?.username || 'you',
+      avatar: currentUser?.avatar_url || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=200',
       content: newPostText,
+      image: newPostImage.trim() ? newPostImage : null,
       likes: 0,
-      reposts: 0,
-      comments: 0,
-      isLiked: false
+      created_at: 'Just now'
     };
 
-    setPosts([newEntry, ...posts]);
+    setPosts([newPost, ...posts]);
     setNewPostText('');
+    setNewPostImage('');
+    setIsPosting(false);
   };
+
+  const toggleLike = (postId) => {
+    setLikedPosts(prev => ({ ...prev, [postId]: !prev[postId] }));
+    setPosts(posts.map(p => {
+      if (p.id === postId) {
+        return { ...p, likes: likedPosts[postId] ? p.likes - 1 : p.likes + 1 };
+      }
+      return p;
+    }));
+  };
+
+  const toggleFollow = (usernameKey) => {
+    setFollowedUsers(prev => ({ ...prev, [usernameKey]: !prev[usernameKey] }));
+  };
+
+  const handleAddComment = (postId) => {
+    const text = activeCommentInput[postId];
+    if (!text || !text.trim()) return;
+
+    setComments(prev => ({
+      ...prev,
+      [postId]: [...(prev[postId] || []), { user: currentUser?.username || 'You', text }]
+    }));
+
+    setActiveCommentInput(prev => ({ ...prev, [postId]: '' }));
+  };
+
+  const mockUsersForChat = [
+    { id: '1', name: 'David Mark', username: 'david_m', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=200', online: true },
+    { id: '2', name: 'Sarah Connor', username: 'sarah_c', avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=200', online: true },
+    { id: '3', name: 'Alexander Smith', username: 'alex_s', avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&q=80&w=200', online: false }
+  ];
 
   const handleSendMessage = (e) => {
     e.preventDefault();
-    if (!newMessageText.trim()) return;
+    if (!newMessage.trim() || !selectedChatUser) return;
 
-    const newMsg = {
-      id: Date.now(),
-      sender: 'You',
-      text: newMessageText,
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    };
-
-    setMessages([...messages, newMsg]);
-    setNewMessageText('');
+    setMessages([...messages, { id: Date.now(), sender: 'you', text: newMessage, time: 'Now' }]);
+    setNewMessage('');
   };
 
-  return (
-    <div className={`min-h-screen ${isDarkMode ? 'bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-900'} flex flex-col font-sans transition-colors duration-200`}>
-      
-      {/* HEADER / NAVIGATION BAR */}
-      <header className={`sticky top-0 z-40 backdrop-blur-md ${isDarkMode ? 'bg-slate-900/80 border-slate-800' : 'bg-white/80 border-slate-200'} border-b px-4 py-3 flex items-center justify-between`}>
-        <div className="flex items-center space-x-3">
-          <div className="bg-gradient-to-tr from-cyan-500 to-blue-600 p-2 rounded-xl text-white shadow-lg shadow-cyan-500/20">
-            <Sparkles className="w-5 h-5" />
+  if (loading) {
+    return (
+      <div style={{ backgroundColor: '#0b0f17', color: '#fff', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Inter, system-ui, sans-serif' }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ width: '40px', height: '40px', border: '3px solid #1e293b', borderTop: '3px solid #3b82f6', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto 16px' }}></div>
+          <p style={{ color: '#94a3b8', fontSize: '14px' }}>Loading LCF Social Hub...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // --- AUTHENTICATION SCREEN ---
+  if (!session) {
+    return (
+      <div style={{ backgroundColor: '#0b0f17', color: '#f8fafc', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', fontFamily: 'Inter, system-ui, sans-serif' }}>
+        <div style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '16px', padding: '36px', width: '100%', maxWidth: '420px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)' }}>
+          <div style={{ textAlign: 'center', marginBottom: '28px' }}>
+            <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '54px', height: '54px', borderRadius: '14px', background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)', color: '#fff', fontSize: '24px', marginBottom: '14px', boxShadow: '0 10px 20px rgba(37, 99, 235, 0.3)' }}>
+              💬
+            </div>
+            <h1 style={{ fontSize: '24px', fontWeight: '700', color: '#ffffff', margin: '0 0 6px' }}>LCF Social Hub</h1>
+            <p style={{ fontSize: '14px', color: '#94a3b8', margin: 0 }}>Connect, Chat & Share in Real-Time</p>
           </div>
-          <span className="font-bold text-xl tracking-tight bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">
-            LCF Hub
-          </span>
+
+          {authError && (
+            <div style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', color: '#f87171', padding: '12px', borderRadius: '8px', fontSize: '13px', marginBottom: '18px' }}>
+              {authError}
+            </div>
+          )}
+
+          <form onSubmit={handleAuth} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            {authMode === 'signup' && (
+              <>
+                <div>
+                  <label style={{ fontSize: '12px', fontWeight: '600', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>FULL NAME</label>
+                  <input
+                    type="text"
+                    required
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    placeholder="e.g. Olalekan Ogunsola"
+                    style={{ width: '100%', padding: '12px', backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', color: '#fff', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: '12px', fontWeight: '600', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>USERNAME</label>
+                  <input
+                    type="text"
+                    required
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    placeholder="e.g. lekkxygold"
+                    style={{ width: '100%', padding: '12px', backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', color: '#fff', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }}
+                  />
+                </div>
+              </>
+            )}
+
+            <div>
+              <label style={{ fontSize: '12px', fontWeight: '600', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>EMAIL ADDRESS</label>
+              <input
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="yourname@email.com"
+                style={{ width: '100%', padding: '12px', backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', color: '#fff', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }}
+              />
+            </div>
+
+            <div>
+              <label style={{ fontSize: '12px', fontWeight: '600', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>PASSWORD</label>
+              <input
+                type="password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                style={{ width: '100%', padding: '12px', backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', color: '#fff', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }}
+              />
+            </div>
+
+            <button
+              type="submit"
+              style={{ marginTop: '8px', padding: '14px', backgroundColor: '#2563eb', border: 'none', borderRadius: '8px', color: '#fff', fontWeight: '600', fontSize: '14px', cursor: 'pointer', transition: 'all 0.2s' }}
+            >
+              {authMode === 'login' ? 'Sign In' : 'Create Account'}
+            </button>
+          </form>
+
+          <div style={{ textAlign: 'center', marginTop: '20px', fontSize: '13px', color: '#94a3b8' }}>
+            {authMode === 'login' ? (
+              <p>Don't have an account? <span onClick={() => setAuthMode('signup')} style={{ color: '#60a5fa', cursor: 'pointer', fontWeight: '600' }}>Sign up</span></p>
+            ) : (
+              <p>Already have an account? <span onClick={() => setAuthMode('login')} style={{ color: '#60a5fa', cursor: 'pointer', fontWeight: '600' }}>Sign in</span></p>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // --- MAIN APPLICATION SCREEN ---
+  return (
+    <div style={{ backgroundColor: '#0b0f17', color: '#f8fafc', minHeight: '100vh', fontFamily: 'Inter, system-ui, sans-serif' }}>
+      
+      {/* Top Header */}
+      <header style={{ position: 'sticky', top: 0, zIndex: 100, backgroundColor: 'rgba(15, 23, 42, 0.85)', backdropFilter: 'blur(12px)', borderBottom: '1px solid #1e293b', padding: '12px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 'bold' }}>
+            LCF
+          </div>
+          <span style={{ fontSize: '18px', fontWeight: '700', letterSpacing: '-0.02em' }}>LCF Social Hub</span>
         </div>
 
-        {/* Navigation Tabs */}
-        <nav className="hidden md:flex items-center space-x-1 bg-slate-800/40 p-1 rounded-full border border-slate-700/50">
+        {/* Global Navigation Bar */}
+        <nav style={{ display: 'flex', alignItems: 'center', backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '30px', padding: '4px' }}>
           {[
-            { id: 'feed', label: 'Feed', icon: Home },
-            { id: 'reels', label: 'Reels', icon: Video },
-            { id: 'chats', label: 'Chats', icon: MessageSquare },
-            { id: 'communities', label: 'Hubs', icon: Users },
-            { id: 'profile', label: 'Profile', icon: User },
-          ].map(tab => {
-            const Icon = tab.icon;
-            return (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center space-x-2 px-4 py-1.5 rounded-full text-sm font-medium transition-all ${
-                  activeTab === tab.id 
-                    ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20' 
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                <Icon className="w-4 h-4" />
-                <span>{tab.label}</span>
-              </button>
-            );
-          })}
+            { id: 'feed', label: 'Feed', icon: <FiHome /> },
+            { id: 'reels', label: 'Reels', icon: <FiVideo /> },
+            { id: 'chats', label: 'Chats', icon: <FiMessageSquare /> },
+            { id: 'hubs', label: 'Hubs', icon: <FiUsers /> },
+            { id: 'profile', label: 'Profile', icon: <FiUser /> }
+          ].map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '8px 16px',
+                border: 'none',
+                borderRadius: '20px',
+                backgroundColor: activeTab === tab.id ? '#2563eb' : 'transparent',
+                color: activeTab === tab.id ? '#ffffff' : '#94a3b8',
+                fontWeight: activeTab === tab.id ? '600' : '500',
+                fontSize: '13px',
+                cursor: 'pointer',
+                transition: 'all 0.2s'
+              }}
+            >
+              {tab.icon}
+              <span>{tab.label}</span>
+            </button>
+          ))}
         </nav>
 
-        {/* Utilities */}
-        <div className="flex items-center space-x-3">
-          <button 
-            onClick={() => setIsDarkMode(!isDarkMode)} 
-            className="p-2 rounded-xl bg-slate-800/50 hover:bg-slate-800 text-slate-300 border border-slate-700/50"
+        {/* User Badge & Sign Out */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <img src={currentUser?.avatar_url} alt="avatar" style={{ width: '32px', height: '32px', borderRadius: '50%', objectFit: 'cover' }} />
+            <span style={{ fontSize: '13px', fontWeight: '600', color: '#e2e8f0' }}>@{currentUser?.username || 'user'}</span>
+          </div>
+          <button
+            onClick={handleSignOut}
+            title="Sign Out"
+            style={{ backgroundColor: '#1e293b', border: 'none', color: '#94a3b8', padding: '8px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
           >
-            {isDarkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-          </button>
-          <button 
-            onClick={() => setShowTermsModal(true)}
-            className="text-xs text-slate-400 hover:underline hidden sm:block"
-          >
-            Guidelines
+            <FiLogOut size={16} />
           </button>
         </div>
       </header>
 
-      {/* MOBILE BOTTOM NAVIGATION BAR */}
-      <nav className={`md:hidden fixed bottom-0 left-0 right-0 z-40 ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'} border-t px-2 py-2 flex justify-around`}>
-        {[
-          { id: 'feed', label: 'Feed', icon: Home },
-          { id: 'reels', label: 'Reels', icon: Video },
-          { id: 'chats', label: 'Chats', icon: MessageSquare },
-          { id: 'communities', label: 'Hubs', icon: Users },
-          { id: 'profile', label: 'Profile', icon: User },
-        ].map(tab => {
-          const Icon = tab.icon;
-          return (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`flex flex-col items-center space-y-1 p-2 rounded-xl ${
-                activeTab === tab.id ? 'text-cyan-400' : 'text-slate-500'
-              }`}
-            >
-              <Icon className="w-5 h-5" />
-              <span className="text-[10px]">{tab.label}</span>
-            </button>
-          );
-        })}
-      </nav>
-
-      {/* MAIN CONTAINER */}
-      <main className="flex-1 max-w-5xl w-full mx-auto p-4 pb-20 md:pb-4 flex gap-6">
+      {/* Main Container */}
+      <main style={{ maxWidth: '1000px', margin: '0 auto', padding: '24px 16px' }}>
         
-        {/* CENTER VIEW CONTENT AREA */}
-        <section className="flex-1 space-y-4">
-          
-          {/* 1. SOCIAL FEED (FACEBOOK STYLE) */}
-          {activeTab === 'feed' && (
-            <div className="space-y-4">
-              {/* Post Composer */}
-              <form onSubmit={handleCreatePost} className={`p-4 rounded-2xl ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'} border shadow-sm`}>
-                <textarea
-                  value={newPostText}
-                  onChange={(e) => setNewPostText(e.target.value)}
-                  placeholder="What's on your mind? Share to LCF..."
-                  className="w-full bg-transparent resize-none border-none focus:outline-none text-sm placeholder-slate-500 min-h-[70px]"
-                />
-                <div className="flex justify-between items-center border-t border-slate-800/50 pt-3 mt-2">
-                  <div className="flex space-x-2 text-slate-400">
-                    <button type="button" className="p-1.5 hover:bg-slate-800 rounded-lg"><Plus className="w-4 h-4" /></button>
+        {/* --- TAB 1: FEED --- */}
+        {activeTab === 'feed' && (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: '24px' }}>
+            <div>
+              {/* Post Creation Box */}
+              <div style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '14px', padding: '16px', marginBottom: '20px' }}>
+                <div style={{ display: 'flex', gap: '12px' }}>
+                  <img src={currentUser?.avatar_url} alt="user" style={{ width: '40px', height: '40px', borderRadius: '50%', objectFit: 'cover' }} />
+                  <textarea
+                    rows={3}
+                    value={newPostText}
+                    onChange={(e) => setNewPostText(e.target.value)}
+                    placeholder="Share something with the LCF community..."
+                    style={{ width: '100%', backgroundColor: 'transparent', border: 'none', color: '#fff', fontSize: '14px', outline: 'none', resize: 'none', fontFamily: 'inherit' }}
+                  />
+                </div>
+
+                {isPosting && (
+                  <div style={{ marginTop: '10px' }}>
+                    <input
+                      type="text"
+                      placeholder="Paste Image URL (optional)..."
+                      value={newPostImage}
+                      onChange={(e) => setNewPostImage(e.target.value)}
+                      style={{ width: '100%', padding: '8px 12px', backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '6px', color: '#fff', fontSize: '12px', outline: 'none' }}
+                    />
                   </div>
-                  <button 
-                    type="submit" 
-                    className="bg-cyan-500 hover:bg-cyan-400 text-slate-950 px-4 py-1.5 rounded-xl font-semibold text-sm transition-all"
+                )}
+
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '12px', paddingTop: '12px', borderTop: '1px solid #1e293b' }}>
+                  <button
+                    onClick={() => setIsPosting(!isPosting)}
+                    style={{ display: 'flex', alignItems: 'center', gap: '6px', backgroundColor: 'transparent', border: 'none', color: '#60a5fa', fontSize: '13px', cursor: 'pointer' }}
+                  >
+                    <FiImage size={16} />
+                    <span>Attach Photo</span>
+                  </button>
+
+                  <button
+                    onClick={handleCreatePost}
+                    style={{ padding: '8px 20px', backgroundColor: '#2563eb', border: 'none', borderRadius: '20px', color: '#fff', fontWeight: '600', fontSize: '13px', cursor: 'pointer' }}
                   >
                     Post
                   </button>
                 </div>
-              </form>
+              </div>
 
-              {/* Feed Stream */}
+              {/* Feed List */}
               {posts.map(post => (
-                <div key={post.id} className={`p-4 rounded-2xl ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'} border space-y-3`}>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-3">
-                      <img src={post.avatar} alt="avatar" className="w-10 h-10 rounded-full object-cover" />
+                <div key={post.id} style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '14px', padding: '18px', marginBottom: '16px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <img src={post.avatar} alt="user" style={{ width: '40px', height: '40px', borderRadius: '50%', objectFit: 'cover' }} />
                       <div>
-                        <h4 className="font-semibold text-sm">{post.author}</h4>
-                        <span className="text-xs text-slate-500">{post.handle}</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <span style={{ fontWeight: '600', fontSize: '14px' }}>{post.user_name}</span>
+                          <FiCheckCircle size={14} color="#3b82f6" />
+                        </div>
+                        <span style={{ fontSize: '12px', color: '#94a3b8' }}>@{post.username} • {post.created_at}</span>
                       </div>
                     </div>
-                    <button onClick={() => setShowReportModal(true)} className="text-slate-500 hover:text-red-400">
-                      <Flag className="w-4 h-4" />
+
+                    <button
+                      onClick={() => toggleFollow(post.username)}
+                      style={{
+                        padding: '6px 14px',
+                        border: '1px solid #3b82f6',
+                        borderRadius: '20px',
+                        backgroundColor: followedUsers[post.username] ? '#3b82f6' : 'transparent',
+                        color: '#ffffff',
+                        fontSize: '12px',
+                        fontWeight: '600',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px'
+                      }}
+                    >
+                      {followedUsers[post.username] ? <><FiUserCheck size={12}/> Following</> : <><FiUserPlus size={12}/> Follow</>}
                     </button>
                   </div>
-                  <p className="text-sm leading-relaxed">{post.content}</p>
-                  <div className="flex items-center justify-between text-slate-400 text-xs border-t border-slate-800/50 pt-2">
-                    <button onClick={() => handleLikePost(post.id)} className={`flex items-center space-x-1 ${post.isLiked ? 'text-red-500' : 'hover:text-slate-200'}`}>
-                      <Heart className="w-4 h-4" fill={post.isLiked ? "currentColor" : "none"} />
+
+                  <p style={{ fontSize: '14px', lineHeight: '1.5', color: '#e2e8f0', margin: '0 0 12px 0' }}>
+                    {post.content}
+                  </p>
+
+                  {post.image && (
+                    <img src={post.image} alt="post media" style={{ width: '100%', borderRadius: '10px', maxHeight: '400px', objectFit: 'cover', marginBottom: '12px' }} />
+                  )}
+
+                  {/* Like, Comment & Share Actions */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '20px', borderTop: '1px solid #1e293b', paddingTop: '12px', color: '#94a3b8', fontSize: '13px' }}>
+                    <button
+                      onClick={() => toggleLike(post.id)}
+                      style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'none', border: 'none', color: likedPosts[post.id] ? '#ef4444' : '#94a3b8', cursor: 'pointer' }}
+                    >
+                      <FiHeart size={16} fill={likedPosts[post.id] ? '#ef4444' : 'none'} />
                       <span>{post.likes}</span>
                     </button>
-                    <button className="flex items-center space-x-1 hover:text-slate-200">
-                      <Repeat className="w-4 h-4" />
-                      <span>{post.reposts}</span>
-                    </button>
-                    <button className="flex items-center space-x-1 hover:text-slate-200">
-                      <MessageSquare className="w-4 h-4" />
-                      <span>{post.comments}</span>
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
 
-          {/* 2. REELS ENGINE (TIKTOK / IG STYLE) */}
-          {activeTab === 'reels' && (
-            <div className="flex flex-col items-center space-y-6">
-              {reels.map(reel => (
-                <div key={reel.id} className="relative w-full max-w-sm aspect-[9/16] bg-slate-900 rounded-3xl overflow-hidden border border-slate-800 shadow-2xl flex items-end p-4">
-                  <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-slate-950/90 z-10"></div>
-                  
-                  {/* Action Bar */}
-                  <div className="absolute right-3 bottom-16 z-20 flex flex-col space-y-4 items-center text-white">
-                    <button onClick={() => handleLikeReel(reel.id)} className="flex flex-col items-center">
-                      <div className={`p-3 rounded-full ${reel.isLiked ? 'bg-red-500 text-white' : 'bg-slate-800/80 text-slate-200'}`}>
-                        <Heart className="w-5 h-5" fill={reel.isLiked ? "currentColor" : "none"} />
-                      </div>
-                      <span className="text-xs mt-1 font-semibold">{reel.likes}</span>
-                    </button>
-                    <button className="flex flex-col items-center">
-                      <div className="p-3 rounded-full bg-slate-800/80 text-slate-200">
-                        <MessageSquare className="w-5 h-5" />
-                      </div>
-                      <span className="text-xs mt-1 font-semibold">{reel.comments}</span>
-                    </button>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <FiMessageCircle size={16} />
+                      <span>{(comments[post.id] || []).length}</span>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                      <FiShare2 size={16} />
+                      <span>Share</span>
+                    </div>
                   </div>
 
-                  {/* Caption & Audio */}
-                  <div className="relative z-20 space-y-2 text-white max-w-[80%]">
-                    <span className="text-xs font-semibold px-2.5 py-1 bg-cyan-500/20 border border-cyan-500/30 text-cyan-300 rounded-full inline-block">
-                      Trending Reel
-                    </span>
-                    <h3 className="font-bold text-sm">@{reel.author}</h3>
-                    <p className="text-xs text-slate-300">{reel.caption}</p>
-                    <div className="flex items-center space-x-2 text-xs text-cyan-400">
-                      <Music2 className="w-3.5 h-3.5 animate-spin" />
-                      <span>{reel.audio}</span>
+                  {/* Comment Section */}
+                  <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px dashed #1e293b' }}>
+                    {(comments[post.id] || []).map((c, i) => (
+                      <div key={i} style={{ fontSize: '12px', color: '#cbd5e1', marginBottom: '6px' }}>
+                        <strong style={{ color: '#60a5fa' }}>@{c.user}: </strong>{c.text}
+                      </div>
+                    ))}
+
+                    <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+                      <input
+                        type="text"
+                        placeholder="Write a comment..."
+                        value={activeCommentInput[post.id] || ''}
+                        onChange={(e) => setActiveCommentInput({ ...activeCommentInput, [post.id]: e.target.value })}
+                        onKeyDown={(e) => e.key === 'Enter' && handleAddComment(post.id)}
+                        style={{ flex: 1, padding: '6px 12px', backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '6px', color: '#fff', fontSize: '12px', outline: 'none' }}
+                      />
+                      <button
+                        onClick={() => handleAddComment(post.id)}
+                        style={{ padding: '6px 12px', backgroundColor: '#2563eb', border: 'none', borderRadius: '6px', color: '#fff', fontSize: '12px', cursor: 'pointer' }}
+                      >
+                        Reply
+                      </button>
                     </div>
                   </div>
                 </div>
               ))}
             </div>
-          )}
 
-          {/* 3. CHATS & CHANNELS (WHATSAPP / TELEGRAM STYLE) */}
-          {activeTab === 'chats' && (
-            <div className={`h-[550px] rounded-2xl ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'} border flex flex-col`}>
-              <div className="p-4 border-b border-slate-800 flex justify-between items-center">
-                <div>
-                  <h3 className="font-bold text-sm"># general-chat</h3>
-                  <span className="text-xs text-slate-400">Public Channel</span>
-                </div>
-                <span className="text-xs text-green-400 flex items-center gap-1">
-                  <span className="w-2 h-2 rounded-full bg-green-500"></span> 24 Members Online
-                </span>
+            {/* Sidebar Guidelines & Trends */}
+            <div>
+              <div style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '14px', padding: '16px', marginBottom: '16px' }}>
+                <h3 style={{ fontSize: '14px', fontWeight: '700', color: '#fff', margin: '0 0 10px 0' }}>Community Guidelines</h3>
+                <p style={{ fontSize: '12px', color: '#94a3b8', lineHeight: '1.5', margin: 0 }}>
+                  Welcome to LCF (Lekkxy Chat Free)! Connect with creators across Africa and worldwide. Keep communications respectful and constructive.
+                </p>
               </div>
-              
-              {/* Message Stream */}
-              <div className="flex-1 p-4 space-y-3 overflow-y-auto">
-                {messages.map(msg => (
-                  <div key={msg.id} className={`p-3 rounded-xl max-w-xs text-xs space-y-1 ${msg.sender === 'You' ? 'bg-cyan-500/20 border border-cyan-500/30 ml-auto' : 'bg-slate-800/50 border border-slate-700/50'}`}>
-                    <div className="flex justify-between items-center gap-4">
-                      <span className="font-semibold text-cyan-400">{msg.sender}</span>
-                      <span className="text-[10px] text-slate-500">{msg.time}</span>
+
+              <div style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '14px', padding: '16px' }}>
+                <h3 style={{ fontSize: '14px', fontWeight: '700', color: '#fff', margin: '0 0 12px 0' }}>Suggested Members</h3>
+                {mockUsersForChat.map(u => (
+                  <div key={u.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <img src={u.avatar} alt="u" style={{ width: '32px', height: '32px', borderRadius: '50%' }} />
+                      <div>
+                        <div style={{ fontSize: '12px', fontWeight: '600' }}>{u.name}</div>
+                        <div style={{ fontSize: '10px', color: '#94a3b8' }}>@{u.username}</div>
+                      </div>
                     </div>
-                    <p className="text-slate-200">{msg.text}</p>
+                    <button
+                      onClick={() => toggleFollow(u.username)}
+                      style={{ padding: '4px 10px', backgroundColor: followedUsers[u.username] ? '#1e293b' : '#2563eb', border: 'none', borderRadius: '12px', color: '#fff', fontSize: '11px', cursor: 'pointer' }}
+                    >
+                      {followedUsers[u.username] ? 'Following' : 'Follow'}
+                    </button>
                   </div>
                 ))}
               </div>
-
-              {/* Input Form */}
-              <form onSubmit={handleSendMessage} className="p-3 border-t border-slate-800 flex gap-2">
-                <input 
-                  type="text" 
-                  value={newMessageText}
-                  onChange={(e) => setNewMessageText(e.target.value)}
-                  placeholder="Type a message..."
-                  className="flex-1 bg-slate-800/50 border border-slate-700/50 rounded-xl px-3 py-2 text-xs focus:outline-none"
-                />
-                <button type="submit" className="bg-cyan-500 p-2 rounded-xl text-slate-950 font-bold">
-                  <Send className="w-4 h-4" />
-                </button>
-              </form>
             </div>
-          )}
+          </div>
+        )}
 
-          {/* 4. COMMUNITIES HUB */}
-          {activeTab === 'communities' && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {[
-                { title: 'React Developers', members: '1.2k members', desc: 'Discuss UI components and frontend frameworks.' },
-                { title: 'Supabase Creators', members: '850 members', desc: 'Backend infrastructure & SQL setup guidelines.' },
-                { title: 'Reels & Video Hub', members: '2.4k members', desc: 'Short-form content strategies & video tools.' }
-              ].map((hub, idx) => (
-                <div key={idx} className={`p-4 rounded-2xl ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'} border space-y-2`}>
-                  <h3 className="font-bold text-sm text-cyan-400">{hub.title}</h3>
-                  <span className="text-xs text-slate-500">{hub.members}</span>
-                  <p className="text-xs text-slate-400">{hub.desc}</p>
-                  <button className="w-full py-1.5 bg-slate-800 hover:bg-slate-700 text-xs font-semibold rounded-xl text-slate-200 mt-2">
-                    Join Community
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* 5. USER PROFILE TAB */}
-          {activeTab === 'profile' && (
-            <div className={`p-6 rounded-2xl ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'} border space-y-4`}>
-              <div className="flex items-center space-x-4">
-                <img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150" alt="Avatar" className="w-16 h-16 rounded-full object-cover border-2 border-cyan-500" />
-                <div>
-                  <h2 className="font-bold text-lg">lekkxygold</h2>
-                  <p className="text-xs text-slate-400"> Creator of LCF Hub</p>
+        {/* --- TAB 2: REELS --- */}
+        {activeTab === 'reels' && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '16px' }}>
+            {[
+              { title: 'Tech Prototyping', user: 'lekkxygold', views: '2.4k', img: 'https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&q=80&w=400' },
+              { title: 'Lounge Architectural Design', user: 'gene_foster', views: '1.8k', img: 'https://images.unsplash.com/photo-1554118811-1e0d58224f24?auto=format&fit=crop&q=80&w=400' },
+              { title: 'Afrobeats Studio Vibes', user: 'david_m', views: '5.1k', img: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?auto=format&fit=crop&q=80&w=400' }
+            ].map((reel, idx) => (
+              <div key={idx} style={{ position: 'relative', borderRadius: '14px', overflow: 'hidden', height: '340px', border: '1px solid #1e293b' }}>
+                <img src={reel.img} alt="reel" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '14px', background: 'linear-gradient(to top, rgba(0,0,0,0.9), transparent)' }}>
+                  <div style={{ fontSize: '13px', fontWeight: '700', color: '#fff' }}>{reel.title}</div>
+                  <div style={{ fontSize: '11px', color: '#60a5fa' }}>@{reel.user} • {reel.views} views</div>
                 </div>
               </div>
-              <p className="text-xs text-slate-300 leading-relaxed">
-                Building social hubs, mobile apps, and developer tools. Welcome to LCF!
+            ))}
+          </div>
+        )}
+
+        {/* --- TAB 3: REAL-TIME DIRECT MESSAGING --- */}
+        {activeTab === 'chats' && (
+          <div style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '16px', height: '600px', display: 'grid', gridTemplateColumns: '280px 1fr', overflow: 'hidden' }}>
+            {/* Conversations List */}
+            <div style={{ borderRight: '1px solid #1e293b', backgroundColor: '#0f172a', padding: '16px' }}>
+              <h3 style={{ fontSize: '16px', fontWeight: '700', margin: '0 0 14px 0' }}>Direct Messages</h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {mockUsersForChat.map(user => (
+                  <div
+                    key={user.id}
+                    onClick={() => setSelectedChatUser(user)}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '10px',
+                      padding: '10px',
+                      borderRadius: '10px',
+                      backgroundColor: selectedChatUser?.id === user.id ? '#1e293b' : 'transparent',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <div style={{ position: 'relative' }}>
+                      <img src={user.avatar} alt="u" style={{ width: '36px', height: '36px', borderRadius: '50%' }} />
+                      {user.online && <div style={{ position: 'absolute', bottom: 0, right: 0, width: '10px', height: '10px', backgroundColor: '#22c55e', borderRadius: '50%', border: '2px solid #0f172a' }}></div>}
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '13px', fontWeight: '600' }}>{user.name}</div>
+                      <div style={{ fontSize: '11px', color: '#94a3b8' }}>Click to open chat</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Chat Box View */}
+            <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+              {selectedChatUser ? (
+                <>
+                  <div style={{ padding: '14px 20px', borderBottom: '1px solid #1e293b', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <img src={selectedChatUser.avatar} alt="avatar" style={{ width: '32px', height: '32px', borderRadius: '50%' }} />
+                    <div>
+                      <div style={{ fontSize: '14px', fontWeight: '600' }}>{selectedChatUser.name}</div>
+                      <div style={{ fontSize: '11px', color: '#22c55e' }}>Online</div>
+                    </div>
+                  </div>
+
+                  <div style={{ flex: 1, padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <div style={{ alignSelf: 'flex-start', backgroundColor: '#1e293b', padding: '10px 14px', borderRadius: '12px', fontSize: '13px', maxWidth: '70%' }}>
+                      Hello! Welcome to LCF Social Hub DM. How is your project going?
+                    </div>
+
+                    {messages.map(m => (
+                      <div key={m.id} style={{ alignSelf: m.sender === 'you' ? 'flex-end' : 'flex-start', backgroundColor: m.sender === 'you' ? '#2563eb' : '#1e293b', color: '#fff', padding: '10px 14px', borderRadius: '12px', fontSize: '13px', maxWidth: '70%' }}>
+                        {m.text}
+                      </div>
+                    ))}
+                  </div>
+
+                  <form onSubmit={handleSendMessage} style={{ padding: '14px', borderTop: '1px solid #1e293b', display: 'flex', gap: '10px' }}>
+                    <input
+                      type="text"
+                      placeholder={`Message ${selectedChatUser.name}...`}
+                      value={newMessage}
+                      onChange={(e) => setNewMessage(e.target.value)}
+                      style={{ flex: 1, padding: '10px 14px', backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', color: '#fff', fontSize: '13px', outline: 'none' }}
+                    />
+                    <button type="submit" style={{ padding: '10px 16px', backgroundColor: '#2563eb', border: 'none', borderRadius: '8px', color: '#fff', cursor: 'pointer' }}>
+                      <FiSend />
+                    </button>
+                  </form>
+                </>
+              ) : (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#94a3b8', fontSize: '14px' }}>
+                  Select a contact from the left list to start chatting.
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* --- TAB 4: HUBS / COMMUNITIES --- */}
+        {activeTab === 'hubs' && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px' }}>
+            {[
+              { name: 'Afrobeats & Music Producers', members: '1,420 members', desc: 'Songwriters, lyricists, and music marketers collaborating on tracks.' },
+              { name: 'Frontend Code & UI/UX', members: '2,890 members', desc: 'React, Tailwind CSS, and web application design enthusiasts.' },
+              { name: 'Project Engineering & CAD', members: '950 members', desc: 'Drafting, millwork shop drawings, and permit planning reviews.' }
+            ].map((hub, i) => (
+              <div key={i} style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '14px', padding: '18px' }}>
+                <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#fff', margin: '0 0 6px 0' }}>{hub.name}</h3>
+                <div style={{ fontSize: '12px', color: '#60a5fa', marginBottom: '10px' }}>{hub.members}</div>
+                <p style={{ fontSize: '13px', color: '#94a3b8', lineHeight: '1.4', marginBottom: '14px' }}>{hub.desc}</p>
+                <button style={{ width: '100%', padding: '8px', backgroundColor: '#1e293b', border: 'none', borderRadius: '8px', color: '#fff', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
+                  Join Community Hub
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* --- TAB 5: PROFILE --- */}
+        {activeTab === 'profile' && (
+          <div style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '16px', overflow: 'hidden' }}>
+            <div style={{ height: '160px', background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)' }}></div>
+            <div style={{ padding: '0 24px 24px', position: 'relative', marginTop: '-50px' }}>
+              <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: '16px' }}>
+                <img src={currentUser?.avatar_url} alt="profile avatar" style={{ width: '100px', height: '100px', borderRadius: '50%', border: '4px solid #151c2c', objectFit: 'cover' }} />
+                <button style={{ padding: '8px 16px', backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px', color: '#fff', fontSize: '13px', cursor: 'pointer' }}>
+                  Edit Profile
+                </button>
+              </div>
+
+              <h2 style={{ fontSize: '20px', fontWeight: '700', color: '#fff', margin: '0 0 2px 0' }}>{currentUser?.full_name || 'Olalekan Ogunsola'}</h2>
+              <div style={{ fontSize: '13px', color: '#60a5fa', marginBottom: '12px' }}>@{currentUser?.username || 'lekkxygold'}</div>
+
+              <p style={{ fontSize: '14px', color: '#cbd5e1', maxWidth: '600px', lineHeight: '1.5', margin: '0 0 16px 0' }}>
+                Official profile on LCF Social Hub. Frontend Architect, Project Developer & Afrobeats Lyric Creator.
               </p>
-              <div className="flex space-x-6 border-y border-slate-800 py-3 text-xs">
-                <div><span className="font-bold text-cyan-400">1.4k</span> <span className="text-slate-500">Followers</span></div>
-                <div><span className="font-bold text-cyan-400">320</span> <span className="text-slate-500">Following</span></div>
-                <div><span className="font-bold text-cyan-400">24</span> <span className="text-slate-500">Posts</span></div>
+
+              <div style={{ display: 'flex', gap: '20px', fontSize: '14px', color: '#94a3b8' }}>
+                <div><strong style={{ color: '#fff' }}>{currentUser?.followers || 142}</strong> Followers</div>
+                <div><strong style={{ color: '#fff' }}>{currentUser?.following || 89}</strong> Following</div>
               </div>
-              <button 
-                onClick={() => setIsFollowing(!isFollowing)}
-                className={`w-full py-2 rounded-xl font-semibold text-xs transition-all ${
-                  isFollowing ? 'bg-slate-800 text-slate-300' : 'bg-cyan-500 text-slate-950 hover:bg-cyan-400'
-                }`}
-              >
-                {isFollowing ? 'Following' : 'Follow @lekkxygold'}
-              </button>
             </div>
-          )}
-
-        </section>
-
-        {/* RIGHT SIDEBAR (SAFETY & DISCOVERY) */}
-        <aside className="hidden lg:block w-72 space-y-4">
-          <div className={`p-4 rounded-2xl ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'} border space-y-3`}>
-            <h4 className="font-bold text-xs uppercase tracking-wider text-slate-400">Community Safety</h4>
-            <p className="text-xs text-slate-400 leading-relaxed">
-              LCF enforces strict safety and content guidelines to prevent abuse.
-            </p>
-            <button 
-              onClick={() => setShowTermsModal(true)}
-              className="text-xs text-cyan-400 hover:underline font-semibold block"
-            >
-              Read Terms & Guidelines
-            </button>
           </div>
-        </aside>
+        )}
       </main>
-
-      {/* REPORT MODAL */}
-      {showReportModal && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 space-y-4">
-            <div className="flex items-center space-x-2 text-amber-400">
-              <AlertTriangle className="w-5 h-5" />
-              <h3 className="font-bold">Report Content</h3>
-            </div>
-            <p className="text-xs text-slate-400">Select a reason for reporting this content:</p>
-            <div className="space-y-2 text-sm">
-              {['Spam or Misleading', 'Hate Speech or Harassment', 'Violent Content', 'Copyright Violation'].map(reason => (
-                <button key={reason} onClick={() => setShowReportModal(false)} className="w-full text-left p-2.5 rounded-xl bg-slate-800/50 hover:bg-slate-800 text-xs text-slate-300">
-                  {reason}
-                </button>
-              ))}
-            </div>
-            <button onClick={() => setShowReportModal(false)} className="w-full py-2 bg-slate-800 text-xs font-semibold rounded-xl text-slate-400">
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* TERMS MODAL */}
-      {showTermsModal && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 space-y-4 max-h-[80vh] overflow-y-auto">
-            <div className="flex items-center space-x-2 text-cyan-400">
-              <Shield className="w-5 h-5" />
-              <h3 className="font-bold">Terms of Service & Guidelines</h3>
-            </div>
-            <div className="text-xs text-slate-300 space-y-3 leading-relaxed">
-              <p><strong>1. Community Standards:</strong> Treat every user with respect. Cyberbullying, hate speech, and harassment are prohibited.</p>
-              <p><strong>2. Moderation & Reporting:</strong> Content flagged for violations will be reviewed by platform moderators.</p>
-              <p><strong>3. Content Ownership:</strong> Creators maintain full ownership over uploaded media and short video reels.</p>
-            </div>
-            <button onClick={() => setShowTermsModal(false)} className="w-full py-2 bg-cyan-500 text-slate-950 text-xs font-bold rounded-xl">
-              I Agree & Understand
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
