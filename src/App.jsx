@@ -31,17 +31,17 @@ export default function App() {
   const [fullName, setFullName] = useState('');
   const [authError, setAuthError] = useState('');
 
-  // User Profile
+  // Current User Profile State
   const [currentUser, setCurrentUser] = useState(null);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [editName, setEditName] = useState('');
   const [editBio, setEditBio] = useState('');
 
-  // Registered Database Users & Instant Search
+  // Registered Database Users Directory & Search State
   const [dbUsers, setDbUsers] = useState([]);
   const [userSearchQuery, setUserSearchQuery] = useState('');
 
-  // Posts State
+  // Posts Stream State
   const [posts, setPosts] = useState([]);
   const [newPostText, setNewPostText] = useState('');
   const [newPostImageBase64, setNewPostImageBase64] = useState(null);
@@ -55,7 +55,7 @@ export default function App() {
   const [newReelTitle, setNewReelTitle] = useState('');
   const [newReelUrl, setNewReelUrl] = useState('');
 
-  // Two-Way Chat State
+  // Messaging State
   const [selectedChatUser, setSelectedChatUser] = useState(null);
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
@@ -85,16 +85,17 @@ export default function App() {
     }
   }, [session]);
 
+  // Load user profile from Supabase profiles table
   const fetchUserProfile = async (user) => {
     const isVerifiedSpecial = user.email?.toLowerCase() === 'omoopeola1@gmail.com';
     try {
-      let { data, error } = await supabase
+      let { data } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', user.id)
         .single();
 
-      if (error || !data) {
+      if (!data) {
         data = {
           id: user.id,
           email: user.email,
@@ -112,11 +113,11 @@ export default function App() {
       setEditName(data.full_name);
       setEditBio(data.bio || '');
     } catch (e) {
-      console.log('Profile fetch error:', e);
+      console.log('Profile setup error:', e);
     }
   };
 
-  // Instant 3-Letter Search Query for Registered Users
+  // Live user search from Supabase database
   const fetchRealUsers = async (query = '') => {
     try {
       let req = supabase.from('profiles').select('*');
@@ -124,43 +125,42 @@ export default function App() {
         req = req.or(`username.ilike.%${query}%,full_name.ilike.%${query}%,email.ilike.%${query}%`);
       }
       const { data } = await req.limit(50);
-      if (data) {
-        setDbUsers(data);
-      }
+      if (data) setDbUsers(data);
     } catch (e) {
-      console.log('Users search error:', e);
+      console.log('User directory fetch error:', e);
     }
   };
 
+  // Load posts permanently stored in Supabase
   const fetchPosts = async () => {
     try {
       const { data } = await supabase.from('posts').select('*').order('created_at', { ascending: false });
-      if (data) setPosts(data);
+      if (data && data.length > 0) {
+        setPosts(data);
+      }
     } catch (e) {
       console.log('Posts fetch error:', e);
     }
   };
 
-  // Real-time messages sync
+  // Persistent Two-Way Messages sync
   useEffect(() => {
     if (!session || !selectedChatUser) return;
 
     const fetchMessages = async () => {
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from('messages')
         .select('*')
         .or(`and(sender_id.eq.${session.user.id},recipient_id.eq.${selectedChatUser.id}),and(sender_id.eq.${selectedChatUser.id},recipient_id.eq.${session.user.id})`)
         .order('created_at', { ascending: true });
 
-      if (!error && data) {
-        setMessages(data);
-      }
+      if (data) setMessages(data);
     };
 
     fetchMessages();
 
     const channel = supabase
-      .channel('public:messages')
+      .channel('realtime:messages')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, payload => {
         if (
           (payload.new.sender_id === session.user.id && payload.new.recipient_id === selectedChatUser.id) ||
@@ -203,7 +203,6 @@ export default function App() {
             verified: isVerifiedSpecial
           }]);
         }
-
         alert('Registration successful! You can now sign in.');
         setAuthMode('login');
       } else {
@@ -223,6 +222,7 @@ export default function App() {
     setCurrentUser(null);
   };
 
+  // Convert device gallery photo to base64 and save in Supabase
   const handleDeviceFileUpload = async (e, field) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -305,7 +305,7 @@ export default function App() {
         <div style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '16px', padding: '32px', width: '100%', maxWidth: '400px' }}>
           <div style={{ textAlign: 'center', marginBottom: '24px' }}>
             <h1 style={{ fontSize: '22px', fontWeight: '700', color: '#fff', margin: '0 0 6px' }}>LCF Social Hub</h1>
-            <p style={{ fontSize: '13px', color: '#94a3b8', margin: 0 }}>Persistent Profiles & Live Search</p>
+            <p style={{ fontSize: '13px', color: '#94a3b8', margin: 0 }}>Real Accounts & Permanent Profiles</p>
           </div>
 
           {authError && (
@@ -372,7 +372,7 @@ export default function App() {
   return (
     <div style={{ backgroundColor: '#0b0f17', color: '#f8fafc', minHeight: '100vh', paddingBottom: '80px', fontFamily: 'Inter, system-ui, sans-serif' }}>
       
-      {/* Sticky Header */}
+      {/* Top Header */}
       <header style={{ position: 'sticky', top: 0, zIndex: 100, backgroundColor: 'rgba(15, 23, 42, 0.95)', backdropFilter: 'blur(10px)', borderBottom: '1px solid #1e293b', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'linear-gradient(135deg, #2563eb, #1d4ed8)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 'bold', fontSize: '12px' }}>
@@ -381,7 +381,7 @@ export default function App() {
           <span style={{ fontSize: '16px', fontWeight: '700' }}>LCF Hub</span>
         </div>
 
-        {/* Desktop Navbar */}
+        {/* Desktop Header Nav */}
         <nav style={{ display: window.innerWidth < 768 ? 'none' : 'flex', gap: '4px', backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '24px', padding: '3px' }}>
           {[
             { id: 'feed', label: 'Feed', icon: <FiHome /> },
@@ -486,12 +486,12 @@ export default function App() {
           </div>
         )}
 
-        {/* --- TAB 2: FIND FRIENDS WITH INSTANT LIVE SEARCH --- */}
+        {/* --- TAB 2: FIND FRIENDS & LIVE USER SEARCH --- */}
         {activeTab === 'find' && (
           <div>
             <div style={{ marginBottom: '16px' }}>
               <h2 style={{ fontSize: '16px', fontWeight: '700', margin: '0 0 4px 0' }}>Find Friends & Registered Members</h2>
-              <p style={{ fontSize: '12px', color: '#94a3b8', margin: 0 }}>Type 3 or more letters to search registered members instantly.</p>
+              <p style={{ fontSize: '12px', color: '#94a3b8', margin: 0 }}>Type username or name to search registered members.</p>
             </div>
 
             <div style={{ position: 'relative', marginBottom: '16px' }}>
@@ -597,7 +597,7 @@ export default function App() {
           </div>
         )}
 
-        {/* --- TAB 4: TWO-WAY CHATS WITH REGISTERED USERS --- */}
+        {/* --- TAB 4: TWO-WAY CHATS --- */}
         {activeTab === 'chats' && (
           <div style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '14px', height: '520px', display: 'grid', gridTemplateColumns: window.innerWidth < 768 && selectedChatUser ? '1fr' : (window.innerWidth < 768 ? '1fr' : '260px 1fr'), overflow: 'hidden' }}>
             
@@ -778,7 +778,7 @@ export default function App() {
         )}
       </main>
 
-      {/* Mobile Full-Screen Bottom Navigation Bar */}
+      {/* Mobile Bottom Bar Navigation */}
       <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(15, 23, 42, 0.98)', borderTop: '1px solid #1e293b', display: 'flex', justifyContent: 'space-around', padding: '12px 0', zIndex: 100 }}>
         {[
           { id: 'feed', label: 'Feed', icon: <FiHome size={20} /> },
