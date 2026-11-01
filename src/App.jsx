@@ -7,7 +7,6 @@ import {
   FiUsers,
   FiUser,
   FiHeart,
-  FiMessageCircle,
   FiSend,
   FiImage,
   FiLogOut,
@@ -15,7 +14,8 @@ import {
   FiSearch,
   FiEdit3,
   FiX,
-  FiCamera
+  FiCamera,
+  FiSave
 } from 'react-icons/fi';
 
 export default function App() {
@@ -31,17 +31,18 @@ export default function App() {
   const [fullName, setFullName] = useState('');
   const [authError, setAuthError] = useState('');
 
-  // Current User Profile State
+  // User Profile State
   const [currentUser, setCurrentUser] = useState(null);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [editName, setEditName] = useState('');
   const [editBio, setEditBio] = useState('');
+  const [savingProfile, setSavingProfile] = useState(false);
 
-  // Registered Database Users Directory & Search State
+  // Registered Users & Directory State
   const [dbUsers, setDbUsers] = useState([]);
   const [userSearchQuery, setUserSearchQuery] = useState('');
 
-  // Posts Stream State
+  // Posts State
   const [posts, setPosts] = useState([]);
   const [newPostText, setNewPostText] = useState('');
   const [newPostImageBase64, setNewPostImageBase64] = useState(null);
@@ -66,13 +67,17 @@ export default function App() {
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
-      if (session) fetchUserProfile(session.user);
+      if (session) {
+        fetchUserProfile(session.user);
+      }
       setLoading(false);
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
-      if (session) fetchUserProfile(session.user);
+      if (session) {
+        fetchUserProfile(session.user);
+      }
     });
 
     return () => subscription.unsubscribe();
@@ -80,22 +85,22 @@ export default function App() {
 
   useEffect(() => {
     if (session) {
-      fetchRealUsers();
+      fetchAllRegisteredUsers();
       fetchPosts();
     }
   }, [session]);
 
-  // Load user profile from Supabase profiles table
+  // Fetch or create user profile in Supabase
   const fetchUserProfile = async (user) => {
     const isVerifiedSpecial = user.email?.toLowerCase() === 'omoopeola1@gmail.com';
     try {
-      let { data } = await supabase
+      let { data, error } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', user.id)
         .single();
 
-      if (!data) {
+      if (error || !data) {
         data = {
           id: user.id,
           email: user.email,
@@ -113,37 +118,36 @@ export default function App() {
       setEditName(data.full_name);
       setEditBio(data.bio || '');
     } catch (e) {
-      console.log('Profile setup error:', e);
+      console.log('Profile fetch error:', e);
     }
   };
 
-  // Live user search from Supabase database
-  const fetchRealUsers = async (query = '') => {
+  // Fetch all registered users for chat and find friends
+  const fetchAllRegisteredUsers = async (query = '') => {
     try {
       let req = supabase.from('profiles').select('*');
-      if (query.trim().length >= 1) {
+      if (query && query.trim().length > 0) {
         req = req.or(`username.ilike.%${query}%,full_name.ilike.%${query}%,email.ilike.%${query}%`);
       }
-      const { data } = await req.limit(50);
-      if (data) setDbUsers(data);
+      const { data, error } = await req.limit(100);
+      if (!error && data) {
+        setDbUsers(data);
+      }
     } catch (e) {
-      console.log('User directory fetch error:', e);
+      console.log('Error fetching registered users:', e);
     }
   };
 
-  // Load posts permanently stored in Supabase
   const fetchPosts = async () => {
     try {
       const { data } = await supabase.from('posts').select('*').order('created_at', { ascending: false });
-      if (data && data.length > 0) {
-        setPosts(data);
-      }
+      if (data) setPosts(data);
     } catch (e) {
       console.log('Posts fetch error:', e);
     }
   };
 
-  // Persistent Two-Way Messages sync
+  // Real-time messages sync
   useEffect(() => {
     if (!session || !selectedChatUser) return;
 
@@ -160,7 +164,7 @@ export default function App() {
     fetchMessages();
 
     const channel = supabase
-      .channel('realtime:messages')
+      .channel('public:messages')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, payload => {
         if (
           (payload.new.sender_id === session.user.id && payload.new.recipient_id === selectedChatUser.id) ||
@@ -189,7 +193,7 @@ export default function App() {
           options: { data: { username, full_name: fullName } }
         });
         if (error) throw error;
-        
+
         if (data?.user) {
           const isVerifiedSpecial = email.toLowerCase() === 'omoopeola1@gmail.com';
           await supabase.from('profiles').upsert([{
@@ -203,6 +207,7 @@ export default function App() {
             verified: isVerifiedSpecial
           }]);
         }
+
         alert('Registration successful! You can now sign in.');
         setAuthMode('login');
       } else {
@@ -222,7 +227,7 @@ export default function App() {
     setCurrentUser(null);
   };
 
-  // Convert device gallery photo to base64 and save in Supabase
+  // Immediate photo upload and database save
   const handleDeviceFileUpload = async (e, field) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -236,9 +241,28 @@ export default function App() {
         const updated = { ...currentUser, [field]: base64 };
         setCurrentUser(updated);
         await supabase.from('profiles').upsert([updated]);
+        alert('Photo updated and saved permanently!');
       }
     };
     reader.readAsDataURL(file);
+  };
+
+  // Explicit Save Profile Function
+  const handleSaveProfileChanges = async (e) => {
+    e.preventDefault();
+    setSavingProfile(true);
+    try {
+      const updated = { ...currentUser, full_name: editName, bio: editBio };
+      const { error } = await supabase.from('profiles').upsert([updated]);
+      if (error) throw error;
+      setCurrentUser(updated);
+      setIsEditingProfile(false);
+      alert('Profile successfully saved to Supabase database!');
+    } catch (err) {
+      alert('Error saving profile: ' + err.message);
+    } finally {
+      setSavingProfile(false);
+    }
   };
 
   const handleCreatePost = async (e) => {
@@ -264,7 +288,7 @@ export default function App() {
     try {
       await supabase.from('posts').insert([newPost]);
     } catch (err) {
-      console.log('Post save error:', err);
+      console.log('Post error:', err);
     }
   };
 
@@ -305,7 +329,7 @@ export default function App() {
         <div style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '16px', padding: '32px', width: '100%', maxWidth: '400px' }}>
           <div style={{ textAlign: 'center', marginBottom: '24px' }}>
             <h1 style={{ fontSize: '22px', fontWeight: '700', color: '#fff', margin: '0 0 6px' }}>LCF Social Hub</h1>
-            <p style={{ fontSize: '13px', color: '#94a3b8', margin: 0 }}>Real Accounts & Permanent Profiles</p>
+            <p style={{ fontSize: '13px', color: '#94a3b8', margin: 0 }}>Persistent Database Profiles & Chats</p>
           </div>
 
           {authError && (
@@ -368,11 +392,11 @@ export default function App() {
     );
   }
 
-  // --- MAIN APP (Full Screen Mobile Layout) ---
+  // --- MAIN APP ---
   return (
     <div style={{ backgroundColor: '#0b0f17', color: '#f8fafc', minHeight: '100vh', paddingBottom: '80px', fontFamily: 'Inter, system-ui, sans-serif' }}>
       
-      {/* Top Header */}
+      {/* Header */}
       <header style={{ position: 'sticky', top: 0, zIndex: 100, backgroundColor: 'rgba(15, 23, 42, 0.95)', backdropFilter: 'blur(10px)', borderBottom: '1px solid #1e293b', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'linear-gradient(135deg, #2563eb, #1d4ed8)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 'bold', fontSize: '12px' }}>
@@ -381,7 +405,7 @@ export default function App() {
           <span style={{ fontSize: '16px', fontWeight: '700' }}>LCF Hub</span>
         </div>
 
-        {/* Desktop Header Nav */}
+        {/* Desktop Navbar */}
         <nav style={{ display: window.innerWidth < 768 ? 'none' : 'flex', gap: '4px', backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '24px', padding: '3px' }}>
           {[
             { id: 'feed', label: 'Feed', icon: <FiHome /> },
@@ -466,7 +490,7 @@ export default function App() {
                       {post.user_name}
                       {post.verified && <FiCheckCircle size={13} color="#3b82f6" title="Verified Account" />}
                     </div>
-                    <div style={{ fontSize: '11px', color: '#94a3b8' }}>@{post.username} • {post.created_at}</div>
+                    <div style={{ fontSize: '11px', color: '#94a3b8' }}>@{post.username}</div>
                   </div>
                 </div>
 
@@ -491,7 +515,7 @@ export default function App() {
           <div>
             <div style={{ marginBottom: '16px' }}>
               <h2 style={{ fontSize: '16px', fontWeight: '700', margin: '0 0 4px 0' }}>Find Friends & Registered Members</h2>
-              <p style={{ fontSize: '12px', color: '#94a3b8', margin: 0 }}>Type username or name to search registered members.</p>
+              <p style={{ fontSize: '12px', color: '#94a3b8', margin: 0 }}>Search registered members in the live database.</p>
             </div>
 
             <div style={{ position: 'relative', marginBottom: '16px' }}>
@@ -503,7 +527,7 @@ export default function App() {
                 onChange={(e) => {
                   const val = e.target.value;
                   setUserSearchQuery(val);
-                  fetchRealUsers(val);
+                  fetchAllRegisteredUsers(val);
                 }}
                 style={{ width: '100%', padding: '10px 10px 10px 36px', backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '10px', color: '#fff', fontSize: '13px', boxSizing: 'border-box', outline: 'none' }}
               />
@@ -597,7 +621,7 @@ export default function App() {
           </div>
         )}
 
-        {/* --- TAB 4: TWO-WAY CHATS --- */}
+        {/* --- TAB 4: TWO-WAY CHATS WITH REGISTERED USERS --- */}
         {activeTab === 'chats' && (
           <div style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '14px', height: '520px', display: 'grid', gridTemplateColumns: window.innerWidth < 768 && selectedChatUser ? '1fr' : (window.innerWidth < 768 ? '1fr' : '260px 1fr'), overflow: 'hidden' }}>
             
@@ -712,12 +736,12 @@ export default function App() {
           </div>
         )}
 
-        {/* --- TAB 5: PROFILE --- */}
+        {/* --- TAB 5: PROFILE WITH SAVE PROFILE BUTTON --- */}
         {activeTab === 'profile' && (
           <div style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '14px', overflow: 'hidden' }}>
             <div style={{ height: '140px', backgroundImage: `url(${currentUser?.cover_url})`, backgroundSize: 'cover', backgroundPosition: 'center', position: 'relative' }}>
               <label style={{ position: 'absolute', bottom: '10px', right: '10px', backgroundColor: 'rgba(0,0,0,0.7)', padding: '6px 10px', borderRadius: '6px', fontSize: '11px', cursor: 'pointer', color: '#fff', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                <FiCamera /> Cover Photo
+                <FiCamera /> Change Cover Photo
                 <input type="file" accept="image/*" onChange={(e) => handleDeviceFileUpload(e, 'cover_url')} style={{ display: 'none' }} />
               </label>
             </div>
@@ -732,7 +756,7 @@ export default function App() {
                   </label>
                 </div>
 
-                <button onClick={() => setIsEditingProfile(true)} style={{ padding: '6px 14px', backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px', color: '#fff', fontSize: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <button onClick={() => setIsEditingProfile(true)} style={{ padding: '6px 14px', backgroundColor: '#2563eb', border: 'none', borderRadius: '8px', color: '#fff', fontSize: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: '600' }}>
                   <FiEdit3 /> Edit Profile
                 </button>
               </div>
@@ -745,7 +769,7 @@ export default function App() {
               <p style={{ fontSize: '13px', color: '#cbd5e1', lineHeight: '1.4', margin: '0 0 14px 0' }}>{currentUser?.bio}</p>
             </div>
 
-            {/* Edit Profile Modal */}
+            {/* Edit Profile Modal with Explicit Save Button */}
             {isEditingProfile && (
               <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '16px' }}>
                 <div style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '14px', padding: '20px', width: '100%', maxWidth: '400px' }}>
@@ -754,13 +778,7 @@ export default function App() {
                     <button onClick={() => setIsEditingProfile(false)} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer' }}><FiX size={18} /></button>
                   </div>
 
-                  <form onSubmit={async (e) => {
-                    e.preventDefault();
-                    const updated = { ...currentUser, full_name: editName, bio: editBio };
-                    setCurrentUser(updated);
-                    setIsEditingProfile(false);
-                    await supabase.from('profiles').upsert([updated]);
-                  }} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <form onSubmit={handleSaveProfileChanges} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                     <div>
                       <label style={{ fontSize: '11px', color: '#94a3b8', display: 'block', marginBottom: '4px' }}>Display Name</label>
                       <input type="text" value={editName} onChange={(e) => setEditName(e.target.value)} style={{ width: '100%', padding: '8px', backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '6px', color: '#fff', fontSize: '12px', boxSizing: 'border-box' }} />
@@ -769,7 +787,9 @@ export default function App() {
                       <label style={{ fontSize: '11px', color: '#94a3b8', display: 'block', marginBottom: '4px' }}>Bio</label>
                       <textarea rows={2} value={editBio} onChange={(e) => setEditBio(e.target.value)} style={{ width: '100%', padding: '8px', backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '6px', color: '#fff', fontSize: '12px', boxSizing: 'border-box', resize: 'none' }} />
                     </div>
-                    <button type="submit" style={{ marginTop: '8px', padding: '10px', backgroundColor: '#2563eb', border: 'none', borderRadius: '8px', color: '#fff', fontWeight: '600', fontSize: '12px', cursor: 'pointer' }}>Save Changes</button>
+                    <button type="submit" disabled={savingProfile} style={{ marginTop: '8px', padding: '10px', backgroundColor: '#2563eb', border: 'none', borderRadius: '8px', color: '#fff', fontWeight: '600', fontSize: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                      <FiSave /> {savingProfile ? 'Saving...' : 'Save Profile'}
+                    </button>
                   </form>
                 </div>
               </div>
