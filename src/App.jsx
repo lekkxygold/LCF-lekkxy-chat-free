@@ -19,7 +19,8 @@ import {
   FiBell,
   FiUserPlus,
   FiUserCheck,
-  FiUserX
+  FiUserX,
+  FiMessageCircle
 } from 'react-icons/fi';
 
 export default function App() {
@@ -50,10 +51,13 @@ export default function App() {
   const [incomingRequests, setIncomingRequests] = useState([]);
   const [sentRequestMap, setSentRequestMap] = useState({});
 
-  // Posts State
+  // Posts & Comments State
   const [posts, setPosts] = useState([]);
   const [newPostText, setNewPostText] = useState('');
   const [newPostImageBase64, setNewPostImageBase64] = useState(null);
+  const [openCommentsPostId, setOpenCommentsPostId] = useState(null);
+  const [postCommentsMap, setPostCommentsMap] = useState({});
+  const [commentInputMap, setCommentInputMap] = useState({});
 
   // Notifications State
   const [notifications, setNotifications] = useState([]);
@@ -153,20 +157,73 @@ export default function App() {
       const { data, error } = await supabase.from('posts').select('*').order('created_at', { ascending: false });
       if (!error && data) {
         setPosts(data);
+        data.forEach(p => fetchCommentsForPost(p.id));
       }
     } catch (e) {
       console.log('Posts fetch error:', e);
     }
   };
 
-  // Fetch Friend Requests for the logged in user
+  const fetchCommentsForPost = async (postId) => {
+    try {
+      const { data } = await supabase
+        .from('post_comments')
+        .select('*')
+        .eq('post_id', postId)
+        .order('created_at', { ascending: true });
+      if (data) {
+        setPostCommentsMap(prev => ({ ...prev, [postId]: data }));
+      }
+    } catch (e) {
+      console.log('Comments fetch error:', e);
+    }
+  };
+
+  const handleToggleLike = async (post) => {
+    const isCurrentlyLiked = likedPosts[post.id];
+    const updatedLikes = isCurrentlyLiked ? Math.max(0, (post.likes || 1) - 1) : (post.likes || 0) + 1;
+
+    setLikedPosts(prev => ({ ...prev, [post.id]: !isCurrentlyLiked }));
+    setPosts(prev => prev.map(p => p.id === post.id ? { ...p, likes: updatedLikes } : p));
+
+    try {
+      await supabase.from('posts').update({ likes: updatedLikes }).eq('id', post.id);
+    } catch (e) {
+      console.log('Like update error:', e);
+    }
+  };
+
+  const handleAddComment = async (postId) => {
+    const text = commentInputMap[postId];
+    if (!text || !text.trim()) return;
+
+    const newCommentObj = {
+      post_id: postId,
+      user_id: session.user.id,
+      user_name: currentUser?.full_name || 'You',
+      avatar: currentUser?.avatar_url,
+      comment: text
+    };
+
+    setPostCommentsMap(prev => ({
+      ...prev,
+      [postId]: [...(prev[postId] || []), { ...newCommentObj, id: Date.now() }]
+    }));
+    setCommentInputMap(prev => ({ ...prev, [postId]: '' }));
+
+    try {
+      await supabase.from('post_comments').insert([newCommentObj]);
+    } catch (e) {
+      console.log('Add comment error:', e);
+    }
+  };
+
   const fetchFriendRequests = async () => {
     if (!session) return;
     try {
-      // 1. Fetch incoming requests
       const { data: incoming } = await supabase
         .from('friend_requests')
-        .select('*, sender:profiles!friend_requests_sender_id_fkey(*)')
+        .select('*, sender:sender_id(*)')
         .eq('recipient_id', session.user.id)
         .eq('status', 'pending');
 
@@ -174,7 +231,6 @@ export default function App() {
         setIncomingRequests(incoming);
       }
 
-      // 2. Fetch sent requests to mark status on user cards
       const { data: sent } = await supabase
         .from('friend_requests')
         .select('*')
@@ -220,12 +276,12 @@ export default function App() {
     }
   };
 
-  // Real-time notifications and message sync
+  // Real-time notifications for messages, friend requests, and posts
   useEffect(() => {
     if (!session) return;
 
     const channel = supabase
-      .channel('public:global_notifications')
+      .channel('public:notifications_stream')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, payload => {
         if (payload.new.recipient_id === session.user.id) {
           const sender = dbUsers.find(u => u.id === payload.new.sender_id) || { full_name: 'Someone' };
@@ -497,7 +553,7 @@ export default function App() {
   return (
     <div style={{ backgroundColor: '#0b0f17', color: '#f8fafc', minHeight: '100vh', paddingBottom: '80px', fontFamily: 'Inter, system-ui, sans-serif' }}>
       
-      {/* Header with Notifications */}
+      {/* Header */}
       <header style={{ position: 'sticky', top: 0, zIndex: 100, backgroundColor: 'rgba(15, 23, 42, 0.95)', backdropFilter: 'blur(10px)', borderBottom: '1px solid #1e293b', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'linear-gradient(135deg, #2563eb, #1d4ed8)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 'bold', fontSize: '12px' }}>
@@ -553,7 +609,7 @@ export default function App() {
               )}
             </button>
 
-            {/* Notifications & Requests Dropdown */}
+            {/* Notifications Dropdown */}
             {showNotifications && (
               <div style={{ position: 'absolute', right: 0, top: '40px', width: '300px', backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '12px', boxShadow: '0 8px 24px rgba(0,0,0,0.5)', zIndex: 1000, overflow: 'hidden' }}>
                 <div style={{ padding: '10px 14px', borderBottom: '1px solid #1e293b', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -592,7 +648,7 @@ export default function App() {
                   ))}
 
                   {incomingRequests.length === 0 && notifications.length === 0 && (
-                    <div style={{ padding: '20px', textAlign: 'center', color: '#94a3b8', fontSize: '12px' }}>No new notifications or friend requests</div>
+                    <div style={{ padding: '20px', textAlign: 'center', color: '#94a3b8', fontSize: '12px' }}>No new notifications</div>
                   )}
                 </div>
               </div>
@@ -608,7 +664,7 @@ export default function App() {
       {/* Main Container */}
       <main style={{ maxWidth: '800px', margin: '0 auto', padding: '16px' }}>
         
-        {/* --- TAB 1: FEED --- */}
+        {/* --- TAB 1: FEED WITH LIKES AND COMMENTS --- */}
         {activeTab === 'feed' && (
           <div>
             <div style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '12px', padding: '14px', marginBottom: '16px' }}>
@@ -644,39 +700,73 @@ export default function App() {
               </div>
             </div>
 
-            {posts.map(post => (
-              <div key={post.id} style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '12px', padding: '16px', marginBottom: '14px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
-                  <img src={post.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200'} alt="u" style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover' }} />
-                  <div>
-                    <div style={{ fontSize: '13px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      {post.user_name}
-                      {post.verified && <FiCheckCircle size={13} color="#3b82f6" title="Verified Account" />}
+            {posts.map(post => {
+              const comments = postCommentsMap[post.id] || [];
+              const isCommentsOpen = openCommentsPostId === post.id;
+              return (
+                <div key={post.id} style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '12px', padding: '16px', marginBottom: '14px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+                    <img src={post.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200'} alt="u" style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover' }} />
+                    <div>
+                      <div style={{ fontSize: '13px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        {post.user_name}
+                        {post.verified && <FiCheckCircle size={13} color="#3b82f6" title="Verified Account" />}
+                      </div>
+                      <div style={{ fontSize: '11px', color: '#94a3b8' }}>@{post.username}</div>
                     </div>
-                    <div style={{ fontSize: '11px', color: '#94a3b8' }}>@{post.username}</div>
                   </div>
+
+                  <p style={{ fontSize: '13px', lineHeight: '1.4', color: '#e2e8f0', margin: '0 0 10px 0' }}>{post.content}</p>
+
+                  {post.image && (
+                    <img src={post.image} alt="media" style={{ width: '100%', maxHeight: '350px', objectFit: 'cover', borderRadius: '8px', marginBottom: '10px' }} />
+                  )}
+
+                  <div style={{ display: 'flex', gap: '16px', borderTop: '1px solid #1e293b', paddingTop: '10px', color: '#94a3b8', fontSize: '12px' }}>
+                    <button onClick={() => handleToggleLike(post)} style={{ background: 'none', border: 'none', color: likedPosts[post.id] ? '#ef4444' : '#94a3b8', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
+                      <FiHeart fill={likedPosts[post.id] ? '#ef4444' : 'none'} /> {post.likes || 0}
+                    </button>
+                    <button onClick={() => setOpenCommentsPostId(isCommentsOpen ? null : post.id)} style={{ background: 'none', border: 'none', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
+                      <FiMessageCircle /> {comments.length} Comments
+                    </button>
+                  </div>
+
+                  {/* Expandable Comments Section */}
+                  {isCommentsOpen && (
+                    <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid #1e293b' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '10px', maxHeight: '180px', overflowY: 'auto' }}>
+                        {comments.map((c, i) => (
+                          <div key={c.id || i} style={{ backgroundColor: '#0f172a', padding: '8px 12px', borderRadius: '8px', fontSize: '12px' }}>
+                            <span style={{ fontWeight: '600', color: '#60a5fa', marginRight: '6px' }}>{c.user_name}:</span>
+                            <span style={{ color: '#e2e8f0' }}>{c.comment}</span>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div style={{ display: 'flex', gap: '6px' }}>
+                        <input
+                          type="text"
+                          placeholder="Write a comment..."
+                          value={commentInputMap[post.id] || ''}
+                          onChange={(e) => setCommentInputMap({ ...commentInputMap, [post.id]: e.target.value })}
+                          style={{ flex: 1, padding: '8px 12px', backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '6px', color: '#fff', fontSize: '12px', outline: 'none' }}
+                        />
+                        <button onClick={() => handleAddComment(post.id)} style={{ padding: '8px 14px', backgroundColor: '#2563eb', border: 'none', borderRadius: '6px', color: '#fff', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
+                          Comment
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
-
-                <p style={{ fontSize: '13px', lineHeight: '1.4', color: '#e2e8f0', margin: '0 0 10px 0' }}>{post.content}</p>
-
-                {post.image && (
-                  <img src={post.image} alt="media" style={{ width: '100%', maxHeight: '350px', objectFit: 'cover', borderRadius: '8px', marginBottom: '10px' }} />
-                )}
-
-                <div style={{ display: 'flex', gap: '16px', borderTop: '1px solid #1e293b', paddingTop: '10px', color: '#94a3b8', fontSize: '12px' }}>
-                  <button onClick={() => setLikedPosts(prev => ({ ...prev, [post.id]: !prev[post.id] }))} style={{ background: 'none', border: 'none', color: likedPosts[post.id] ? '#ef4444' : '#94a3b8', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
-                    <FiHeart fill={likedPosts[post.id] ? '#ef4444' : 'none'} /> {post.likes}
-                  </button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
 
-        {/* --- TAB 2: FIND FRIENDS WITH INCOMING REQUEST CONTROL --- */}
+        {/* --- TAB 2: FIND FRIENDS WITH ACCEPT/DECLINE CONTROL --- */}
         {activeTab === 'find' && (
           <div>
-            {/* Incoming Requests Banner Section */}
+            {/* Incoming Requests Section */}
             {incomingRequests.length > 0 && (
               <div style={{ backgroundColor: '#151c2c', border: '1px solid #2563eb', borderRadius: '12px', padding: '16px', marginBottom: '20px' }}>
                 <h3 style={{ fontSize: '14px', fontWeight: '700', margin: '0 0 12px 0', color: '#60a5fa', display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -688,7 +778,7 @@ export default function App() {
                       <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                         <img src={req.sender?.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200'} alt="u" style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover' }} />
                         <div>
-                          <div style={{ fontSize: '13px', fontWeight: '600' }}>{req.sender?.full_name}</div>
+                          <div style={{ fontSize: '13px', fontWeight: '600' }}>{req.sender?.full_name || 'Member'}</div>
                           <div style={{ fontSize: '11px', color: '#94a3b8' }}>@{req.sender?.username}</div>
                         </div>
                       </div>
@@ -831,7 +921,7 @@ export default function App() {
           </div>
         )}
 
-        {/* --- TAB 4: TWO-WAY CHATS WITH REGISTERED USERS --- */}
+        {/* --- TAB 4: TWO-WAY CHATS --- */}
         {activeTab === 'chats' && (
           <div style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '14px', height: '520px', display: 'grid', gridTemplateColumns: window.innerWidth < 768 && selectedChatUser ? '1fr' : (window.innerWidth < 768 ? '1fr' : '260px 1fr'), overflow: 'hidden' }}>
             
@@ -859,7 +949,7 @@ export default function App() {
               </div>
             </div>
 
-            {/* Chat Conversation View */}
+            {/* Chat View */}
             <div style={{ display: window.innerWidth < 768 && !selectedChatUser ? 'none' : 'flex', flexDirection: 'column', height: '100%' }}>
               {selectedChatUser ? (
                 <>
@@ -1008,7 +1098,7 @@ export default function App() {
         )}
       </main>
 
-      {/* Mobile Bottom Bar Navigation */}
+      {/* Mobile Navigation Bar */}
       <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(15, 23, 42, 0.98)', borderTop: '1px solid #1e293b', display: 'flex', justifyContent: 'space-around', padding: '12px 0', zIndex: '100' }}>
         {[
           { id: 'feed', label: 'Feed', icon: <FiHome size={20} /> },
