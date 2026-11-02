@@ -47,9 +47,10 @@ export default function App() {
   const [dbUsers, setDbUsers] = useState([]);
   const [userSearchQuery, setUserSearchQuery] = useState('');
 
-  // Friend Requests State
+  // Friend Requests & Count State
   const [incomingRequests, setIncomingRequests] = useState([]);
   const [sentRequestMap, setSentRequestMap] = useState({});
+  const [friendCount, setFriendCount] = useState(0);
 
   // Posts & Comments State
   const [posts, setPosts] = useState([]);
@@ -221,6 +222,7 @@ export default function App() {
   const fetchFriendRequests = async () => {
     if (!session) return;
     try {
+      // Incoming requests
       const { data: incoming } = await supabase
         .from('friend_requests')
         .select('*, sender:sender_id(*)')
@@ -231,14 +233,25 @@ export default function App() {
         setIncomingRequests(incoming);
       }
 
+      // Sent requests and accepted count
       const { data: sent } = await supabase
+        .from('friend_requests')
+        .select('*')
+        .or(`sender_id.eq.${session.user.id},recipient_id.eq.${session.user.id}`)
+        .eq('status', 'accepted');
+
+      if (sent) {
+        setFriendCount(sent.length);
+      }
+
+      const { data: allSent } = await supabase
         .from('friend_requests')
         .select('*')
         .eq('sender_id', session.user.id);
 
-      if (sent) {
+      if (allSent) {
         const map = {};
-        sent.forEach(r => { map[r.recipient_id] = r.status; });
+        allSent.forEach(r => { map[r.recipient_id] = r.status; });
         setSentRequestMap(map);
       }
     } catch (e) {
@@ -248,6 +261,10 @@ export default function App() {
 
   const handleSendFriendRequest = async (targetUser) => {
     if (!session) return;
+    if (targetUser.id === session.user.id) {
+      alert("You cannot send a friend request to yourself.");
+      return;
+    }
     try {
       const req = {
         sender_id: session.user.id,
@@ -270,13 +287,14 @@ export default function App() {
         .eq('id', requestId);
 
       setIncomingRequests(prev => prev.filter(req => req.id !== requestId));
+      fetchFriendRequests();
       alert(`Friend request ${newStatus}!`);
     } catch (e) {
       console.log('Respond request error:', e);
     }
   };
 
-  // Real-time notifications for messages, friend requests, and posts
+  // Real-time notifications for messages and friend requests
   useEffect(() => {
     if (!session) return;
 
@@ -286,7 +304,7 @@ export default function App() {
         if (payload.new.recipient_id === session.user.id) {
           const sender = dbUsers.find(u => u.id === payload.new.sender_id) || { full_name: 'Someone' };
           setNotifications(prev => [
-            { id: Date.now(), text: `New message from ${sender.full_name}`, time: 'Just now', type: 'message' },
+            { id: Date.now(), text: `New message from ${sender.full_name || 'Someone'}`, time: 'Just now', type: 'message' },
             ...prev
           ]);
         }
@@ -486,7 +504,7 @@ export default function App() {
         <div style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '16px', padding: '32px', width: '100%', maxWidth: '400px' }}>
           <div style={{ textAlign: 'center', marginBottom: '24px' }}>
             <h1 style={{ fontSize: '22px', fontWeight: '700', color: '#fff', margin: '0 0 6px' }}>LCF Social Hub</h1>
-            <p style={{ fontSize: '13px', color: '#94a3b8', margin: 0 }}>Friend Requests & Real-Time Direct Messaging</p>
+            <p style={{ fontSize: '13px', color: '#94a3b8', margin: 0 }}>Friend Requests & Message Notifications</p>
           </div>
 
           {authError && (
@@ -664,7 +682,7 @@ export default function App() {
       {/* Main Container */}
       <main style={{ maxWidth: '800px', margin: '0 auto', padding: '16px' }}>
         
-        {/* --- TAB 1: FEED WITH LIKES AND COMMENTS --- */}
+        {/* --- TAB 1: FEED --- */}
         {activeTab === 'feed' && (
           <div>
             <div style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '12px', padding: '14px', marginBottom: '16px' }}>
@@ -731,7 +749,7 @@ export default function App() {
                     </button>
                   </div>
 
-                  {/* Expandable Comments Section */}
+                  {/* Comments Section */}
                   {isCommentsOpen && (
                     <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid #1e293b' }}>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '10px', maxHeight: '180px', overflowY: 'auto' }}>
@@ -763,10 +781,9 @@ export default function App() {
           </div>
         )}
 
-        {/* --- TAB 2: FIND FRIENDS WITH ACCEPT/DECLINE CONTROL --- */}
+        {/* --- TAB 2: FIND FRIENDS --- */}
         {activeTab === 'find' && (
           <div>
-            {/* Incoming Requests Section */}
             {incomingRequests.length > 0 && (
               <div style={{ backgroundColor: '#151c2c', border: '1px solid #2563eb', borderRadius: '12px', padding: '16px', marginBottom: '20px' }}>
                 <h3 style={{ fontSize: '14px', fontWeight: '700', margin: '0 0 12px 0', color: '#60a5fa', display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -825,6 +842,7 @@ export default function App() {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '14px' }}>
               {dbUsers.map(user => {
                 const reqStatus = sentRequestMap[user.id];
+                const isSelf = user.id === session?.user?.id;
                 return (
                   <div key={user.id} style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '12px', padding: '16px', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
                     <img src={user.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200'} alt="u" style={{ width: '64px', height: '64px', borderRadius: '50%', objectFit: 'cover', marginBottom: '10px' }} />
@@ -836,31 +854,33 @@ export default function App() {
                     <div style={{ fontSize: '11px', color: '#60a5fa', marginBottom: '8px' }}>@{user.username}</div>
                     <p style={{ fontSize: '12px', color: '#94a3b8', lineHeight: '1.4', margin: '0 0 14px 0', flex: 1 }}>{user.bio || 'LCF Member'}</p>
 
-                    <div style={{ display: 'flex', gap: '8px', width: '100%' }}>
-                      <button
-                        disabled={reqStatus === 'pending' || reqStatus === 'accepted'}
-                        onClick={() => handleSendFriendRequest(user)}
-                        style={{
-                          flex: 1,
-                          padding: '6px',
-                          backgroundColor: reqStatus === 'accepted' ? '#22c55e' : (reqStatus === 'pending' ? '#1e293b' : '#2563eb'),
-                          border: 'none',
-                          borderRadius: '6px',
-                          color: '#fff',
-                          fontSize: '11px',
-                          fontWeight: '600',
-                          cursor: reqStatus ? 'default' : 'pointer'
-                        }}
-                      >
-                        {reqStatus === 'accepted' ? 'Friends' : (reqStatus === 'pending' ? 'Request Sent' : 'Add Friend')}
-                      </button>
-                      <button
-                        onClick={() => { setSelectedChatUser(user); setActiveTab('chats'); }}
-                        style={{ padding: '6px 10px', backgroundColor: '#1e293b', border: 'none', borderRadius: '6px', color: '#60a5fa', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}
-                      >
-                        Chat
-                      </button>
-                    </div>
+                    {!isSelf && (
+                      <div style={{ display: 'flex', gap: '8px', width: '100%' }}>
+                        <button
+                          disabled={reqStatus === 'pending' || reqStatus === 'accepted'}
+                          onClick={() => handleSendFriendRequest(user)}
+                          style={{
+                            flex: 1,
+                            padding: '6px',
+                            backgroundColor: reqStatus === 'accepted' ? '#22c55e' : (reqStatus === 'pending' ? '#1e293b' : '#2563eb'),
+                            border: 'none',
+                            borderRadius: '6px',
+                            color: '#fff',
+                            fontSize: '11px',
+                            fontWeight: '600',
+                            cursor: reqStatus ? 'default' : 'pointer'
+                          }}
+                        >
+                          {reqStatus === 'accepted' ? 'Friends' : (reqStatus === 'pending' ? 'Request Sent' : 'Add Friend')}
+                        </button>
+                        <button
+                          onClick={() => { setSelectedChatUser(user); setActiveTab('chats'); }}
+                          style={{ padding: '6px 10px', backgroundColor: '#1e293b', border: 'none', borderRadius: '6px', color: '#60a5fa', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}
+                        >
+                          Chat
+                        </button>
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -921,7 +941,7 @@ export default function App() {
           </div>
         )}
 
-        {/* --- TAB 4: TWO-WAY CHATS --- */}
+        {/* --- TAB 4: CHATS --- */}
         {activeTab === 'chats' && (
           <div style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '14px', height: '520px', display: 'grid', gridTemplateColumns: window.innerWidth < 768 && selectedChatUser ? '1fr' : (window.innerWidth < 768 ? '1fr' : '260px 1fr'), overflow: 'hidden' }}>
             
@@ -1036,7 +1056,7 @@ export default function App() {
           </div>
         )}
 
-        {/* --- TAB 5: PROFILE --- */}
+        {/* --- TAB 5: PROFILE WITH FRIEND COUNTER --- */}
         {activeTab === 'profile' && (
           <div style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '14px', overflow: 'hidden' }}>
             <div style={{ height: '140px', backgroundImage: `url(${currentUser?.cover_url})`, backgroundSize: 'cover', backgroundPosition: 'center', position: 'relative' }}>
@@ -1065,7 +1085,8 @@ export default function App() {
                 {currentUser?.full_name}
                 {currentUser?.verified && <FiCheckCircle size={16} color="#3b82f6" title="Verified Account" />}
               </h2>
-              <div style={{ fontSize: '12px', color: '#60a5fa', marginBottom: '10px' }}>@{currentUser?.username} • {currentUser?.email}</div>
+              <div style={{ fontSize: '12px', color: '#60a5fa', marginBottom: '8px' }}>@{currentUser?.username} • {currentUser?.email}</div>
+              <div style={{ fontSize: '12px', color: '#22c55e', fontWeight: '600', marginBottom: '10px' }}>👥 {friendCount} Friends</div>
               <p style={{ fontSize: '13px', color: '#cbd5e1', lineHeight: '1.4', margin: '0 0 14px 0' }}>{currentUser?.bio}</p>
             </div>
 
