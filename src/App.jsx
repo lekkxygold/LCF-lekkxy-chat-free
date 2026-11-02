@@ -679,7 +679,7 @@ export default function App() {
 
   return (
     <div style={{ backgroundColor: '#0b0f17', color: '#f8fafc', minHeight: '100vh', width: '100vw', boxSizing: 'border-box', paddingBottom: '80px', fontFamily: 'Inter, system-ui, sans-serif', overflowX: 'hidden' }}>
-      <header style={{ position: 'sticky', top: 0, zIndex: 100, backgroundColor: 'rgba(15, 23, 42, 0.95)', backdropFilter: 'blur(10px)', borderBottom: '1px solid #1e293b', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', boxSizing: 'border-box' }}>
+      <header style={{ position: 'sticky', top: 0, zIndex: 100, backgroundColor: 'rgba(15, 23, 42, 0.95)', backdropFilter: 'blur(10px)', borderBottom: '1px solid #1e293b', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100vw', boxSizing: 'border-box' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'linear-gradient(135deg, #2563eb, #1d4ed8)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 'bold', fontSize: '12px' }}>
             LCF
@@ -793,7 +793,7 @@ export default function App() {
       </header>
 
       {/* FULL WIDTH MOBILE CONTAINER */}
-      <main style={{ width: '100%', maxWidth: '800px', margin: '0 auto', padding: window.innerWidth < 768 ? '8px' : '16px', boxSizing: 'border-box' }}>
+      <main style={{ width: '100vw', maxWidth: '800px', margin: '0 auto', padding: window.innerWidth < 768 ? '4px' : '16px', boxSizing: 'border-box' }}>
         {activeTab === 'feed' && (
           <div>
             <div style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: window.innerWidth < 768 ? '0px' : '12px', padding: '14px', marginBottom: '16px' }}>
@@ -1219,10 +1219,10 @@ export default function App() {
         )}
       </main>
 
-      {/* CLEAN APP INSTALL MODAL (Replaces intrusive alert popup) */}
+      {/* CLEAN APP INSTALL MODAL (Fixed Markdown text display) */}
       {showInstallModal && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '16px' }}>
-          <div style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '16px', padding: '24px', width: '100%', maxWidth: '36px0', boxSizing: 'border-box' }}>
+          <div style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '16px', padding: '24px', width: '100%', maxWidth: '380px', boxSizing: 'border-box' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
               <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#fff', margin: 0 }}>Install LCF Mobile App</h3>
               <button onClick={() => setShowInstallModal(false)} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer' }}><FiX size={18} /></button>
@@ -1230,9 +1230,9 @@ export default function App() {
             <p style={{ fontSize: '13px', color: '#94a3b8', lineHeight: '1.5', margin: '0 0 16px 0' }}>
               To install LCF as an app on your phone:
             </p>
-            <div style={{ fontSize: '12px', color: '#e2e8f0', display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '20px', backgroundColor: '#0f172a', padding: '12px', borderRadius: '8px' }}>
-              <div>🟢 **Android (Chrome):** Tap browser menu (⋮) $\rightarrow$ **Install app** or **Add to Home screen**.</div>
-              <div>🍏 **iPhone (Safari):** Tap Share button (⎋) $\rightarrow$ **Add to Home Screen**.</div>
+            <div style={{ fontSize: '12px', color: '#e2e8f0', display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '20px', backgroundColor: '#0f172a', padding: '12px', borderRadius: '8px', lineHeight: '1.5' }}>
+              <div>🟢 <b>Android (Chrome):</b> Tap browser menu (⋮) → <b>Install app</b> or <b>Add to Home screen</b>.</div>
+              <div>🍏 <b>iPhone (Safari):</b> Tap Share button (⎋) → <b>Add to Home Screen</b>.</div>
             </div>
             <button onClick={() => setShowInstallModal(false)} style={{ width: '100%', padding: '10px', backgroundColor: '#2563eb', border: 'none', borderRadius: '8px', color: '#fff', fontWeight: '600', fontSize: '13px', cursor: 'pointer' }}>
               Got It
@@ -1242,7 +1242,7 @@ export default function App() {
       )}
 
       {/* MOBILE BOTTOM NAVIGATION BAR */}
-      <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(15, 23, 42, 0.98)', borderTop: '1px solid #1e293b', display: 'flex', justifyContent: 'space-around', padding: '10px 0', zIndex: '100', width: '100%', boxSizing: 'border-box' }}>
+      <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(15, 23, 42, 0.98)', borderTop: '1px solid #1e293b', display: 'flex', justifyContent: 'space-around', padding: '10px 0', zIndex: '100', width: '100vw', boxSizing: 'border-box' }}>
         {[
           { id: 'feed', label: 'Feed', icon: <FiHome size={20} /> },
           { id: 'find', label: 'Friends', icon: <FiUsers size={20} /> },
