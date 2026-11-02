@@ -15,7 +15,11 @@ import {
   FiEdit3,
   FiX,
   FiCamera,
-  FiSave
+  FiSave,
+  FiBell,
+  FiUserPlus,
+  FiUserCheck,
+  FiUserX
 } from 'react-icons/fi';
 
 export default function App() {
@@ -38,14 +42,22 @@ export default function App() {
   const [editBio, setEditBio] = useState('');
   const [savingProfile, setSavingProfile] = useState(false);
 
-  // Registered Users & Directory State
+  // Registered Users Directory State
   const [dbUsers, setDbUsers] = useState([]);
   const [userSearchQuery, setUserSearchQuery] = useState('');
+
+  // Friend Requests State
+  const [incomingRequests, setIncomingRequests] = useState([]);
+  const [sentRequestMap, setSentRequestMap] = useState({});
 
   // Posts State
   const [posts, setPosts] = useState([]);
   const [newPostText, setNewPostText] = useState('');
   const [newPostImageBase64, setNewPostImageBase64] = useState(null);
+
+  // Notifications State
+  const [notifications, setNotifications] = useState([]);
+  const [showNotifications, setShowNotifications] = useState(false);
 
   // Reels State
   const [reels, setReels] = useState([
@@ -62,7 +74,6 @@ export default function App() {
   const [newMessage, setNewMessage] = useState('');
   const [chatPhotoBase64, setChatPhotoBase64] = useState(null);
   const [likedPosts, setLikedPosts] = useState({});
-  const [friendRequests, setFriendRequests] = useState({});
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -87,10 +98,10 @@ export default function App() {
     if (session) {
       fetchAllRegisteredUsers();
       fetchPosts();
+      fetchFriendRequests();
     }
   }, [session]);
 
-  // Fetch or create user profile in Supabase
   const fetchUserProfile = async (user) => {
     const isVerifiedSpecial = user.email?.toLowerCase() === 'omoopeola1@gmail.com';
     try {
@@ -122,7 +133,6 @@ export default function App() {
     }
   };
 
-  // Fetch all registered users for chat and find friends
   const fetchAllRegisteredUsers = async (query = '') => {
     try {
       let req = supabase.from('profiles').select('*');
@@ -149,7 +159,98 @@ export default function App() {
     }
   };
 
-  // Real-time messages sync
+  // Fetch Friend Requests for the logged in user
+  const fetchFriendRequests = async () => {
+    if (!session) return;
+    try {
+      // 1. Fetch incoming requests
+      const { data: incoming } = await supabase
+        .from('friend_requests')
+        .select('*, sender:profiles!friend_requests_sender_id_fkey(*)')
+        .eq('recipient_id', session.user.id)
+        .eq('status', 'pending');
+
+      if (incoming) {
+        setIncomingRequests(incoming);
+      }
+
+      // 2. Fetch sent requests to mark status on user cards
+      const { data: sent } = await supabase
+        .from('friend_requests')
+        .select('*')
+        .eq('sender_id', session.user.id);
+
+      if (sent) {
+        const map = {};
+        sent.forEach(r => { map[r.recipient_id] = r.status; });
+        setSentRequestMap(map);
+      }
+    } catch (e) {
+      console.log('Friend requests fetch error:', e);
+    }
+  };
+
+  const handleSendFriendRequest = async (targetUser) => {
+    if (!session) return;
+    try {
+      const req = {
+        sender_id: session.user.id,
+        recipient_id: targetUser.id,
+        status: 'pending'
+      };
+      await supabase.from('friend_requests').insert([req]);
+      setSentRequestMap(prev => ({ ...prev, [targetUser.id]: 'pending' }));
+      alert(`Friend request sent to ${targetUser.full_name}!`);
+    } catch (e) {
+      console.log('Send request error:', e);
+    }
+  };
+
+  const handleRespondFriendRequest = async (requestId, newStatus) => {
+    try {
+      await supabase
+        .from('friend_requests')
+        .update({ status: newStatus })
+        .eq('id', requestId);
+
+      setIncomingRequests(prev => prev.filter(req => req.id !== requestId));
+      alert(`Friend request ${newStatus}!`);
+    } catch (e) {
+      console.log('Respond request error:', e);
+    }
+  };
+
+  // Real-time notifications and message sync
+  useEffect(() => {
+    if (!session) return;
+
+    const channel = supabase
+      .channel('public:global_notifications')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, payload => {
+        if (payload.new.recipient_id === session.user.id) {
+          const sender = dbUsers.find(u => u.id === payload.new.sender_id) || { full_name: 'Someone' };
+          setNotifications(prev => [
+            { id: Date.now(), text: `New message from ${sender.full_name}`, time: 'Just now', type: 'message' },
+            ...prev
+          ]);
+        }
+      })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'friend_requests' }, payload => {
+        if (payload.new.recipient_id === session.user.id) {
+          fetchFriendRequests();
+          setNotifications(prev => [
+            { id: Date.now(), text: `You received a new friend request!`, time: 'Just now', type: 'friend' },
+            ...prev
+          ]);
+        }
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [session, dbUsers]);
+
   useEffect(() => {
     if (!session || !selectedChatUser) return;
 
@@ -165,7 +266,7 @@ export default function App() {
 
     fetchMessages();
 
-    const channel = supabase
+    const chatChannel = supabase
       .channel('public:messages')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, payload => {
         if (
@@ -178,7 +279,7 @@ export default function App() {
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      supabase.removeChannel(chatChannel);
     };
   }, [session, selectedChatUser]);
 
@@ -229,7 +330,6 @@ export default function App() {
     setCurrentUser(null);
   };
 
-  // Immediate photo upload and database save
   const handleDeviceFileUpload = async (e, field) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -249,7 +349,6 @@ export default function App() {
     reader.readAsDataURL(file);
   };
 
-  // Explicit Save Profile Function
   const handleSaveProfileChanges = async (e) => {
     e.preventDefault();
     setSavingProfile(true);
@@ -331,7 +430,7 @@ export default function App() {
         <div style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '16px', padding: '32px', width: '100%', maxWidth: '400px' }}>
           <div style={{ textAlign: 'center', marginBottom: '24px' }}>
             <h1 style={{ fontSize: '22px', fontWeight: '700', color: '#fff', margin: '0 0 6px' }}>LCF Social Hub</h1>
-            <p style={{ fontSize: '13px', color: '#94a3b8', margin: 0 }}>Persistent Database Profiles & Chats</p>
+            <p style={{ fontSize: '13px', color: '#94a3b8', margin: 0 }}>Friend Requests & Real-Time Direct Messaging</p>
           </div>
 
           {authError && (
@@ -398,7 +497,7 @@ export default function App() {
   return (
     <div style={{ backgroundColor: '#0b0f17', color: '#f8fafc', minHeight: '100vh', paddingBottom: '80px', fontFamily: 'Inter, system-ui, sans-serif' }}>
       
-      {/* Header */}
+      {/* Header with Notifications */}
       <header style={{ position: 'sticky', top: 0, zIndex: 100, backgroundColor: 'rgba(15, 23, 42, 0.95)', backdropFilter: 'blur(10px)', borderBottom: '1px solid #1e293b', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'linear-gradient(135deg, #2563eb, #1d4ed8)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 'bold', fontSize: '12px' }}>
@@ -439,9 +538,71 @@ export default function App() {
           ))}
         </nav>
 
-        <button onClick={handleSignOut} style={{ background: '#1e293b', border: 'none', color: '#94a3b8', padding: '8px', borderRadius: '8px', cursor: 'pointer' }} title="Sign Out">
-          <FiLogOut size={16} />
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{ position: 'relative' }}>
+            <button
+              onClick={() => setShowNotifications(!showNotifications)}
+              style={{ background: '#1e293b', border: 'none', color: (notifications.length > 0 || incomingRequests.length > 0) ? '#60a5fa' : '#94a3b8', padding: '8px', borderRadius: '8px', cursor: 'pointer', position: 'relative', display: 'flex', alignItems: 'center' }}
+              title="Notifications"
+            >
+              <FiBell size={16} />
+              {(notifications.length + incomingRequests.length) > 0 && (
+                <span style={{ position: 'absolute', top: -4, right: -4, backgroundColor: '#ef4444', color: '#fff', fontSize: '9px', width: '16px', height: '16px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>
+                  {notifications.length + incomingRequests.length}
+                </span>
+              )}
+            </button>
+
+            {/* Notifications & Requests Dropdown */}
+            {showNotifications && (
+              <div style={{ position: 'absolute', right: 0, top: '40px', width: '300px', backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '12px', boxShadow: '0 8px 24px rgba(0,0,0,0.5)', zIndex: 1000, overflow: 'hidden' }}>
+                <div style={{ padding: '10px 14px', borderBottom: '1px solid #1e293b', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '12px', fontWeight: '700' }}>Notifications & Requests</span>
+                  <button onClick={() => setNotifications([])} style={{ background: 'none', border: 'none', color: '#60a5fa', fontSize: '11px', cursor: 'pointer' }}>Clear all</button>
+                </div>
+
+                <div style={{ maxHeight: '280px', overflowY: 'auto' }}>
+                  {incomingRequests.map(req => (
+                    <div key={req.id} style={{ padding: '10px 14px', borderBottom: '1px solid #1e293b', backgroundColor: 'rgba(37,99,235,0.1)' }}>
+                      <div style={{ fontSize: '12px', color: '#fff', fontWeight: '600', marginBottom: '6px' }}>
+                        {req.sender?.full_name || 'A user'} sent you a friend request
+                      </div>
+                      <div style={{ display: 'flex', gap: '6px' }}>
+                        <button
+                          onClick={() => handleRespondFriendRequest(req.id, 'accepted')}
+                          style={{ flex: 1, padding: '4px', backgroundColor: '#22c55e', border: 'none', borderRadius: '4px', color: '#fff', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}
+                        >
+                          Accept
+                        </button>
+                        <button
+                          onClick={() => handleRespondFriendRequest(req.id, 'declined')}
+                          style={{ flex: 1, padding: '4px', backgroundColor: '#ef4444', border: 'none', borderRadius: '4px', color: '#fff', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}
+                        >
+                          Decline
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+
+                  {notifications.map((n, i) => (
+                    <div key={i} style={{ padding: '10px 14px', borderBottom: '1px solid rgba(30,41,59,0.5)', fontSize: '12px' }}>
+                      <div style={{ color: '#fff', marginBottom: '2px' }}>{n.text}</div>
+                      <div style={{ color: '#94a3b8', fontSize: '10px' }}>{n.time}</div>
+                    </div>
+                  ))}
+
+                  {incomingRequests.length === 0 && notifications.length === 0 && (
+                    <div style={{ padding: '20px', textAlign: 'center', color: '#94a3b8', fontSize: '12px' }}>No new notifications or friend requests</div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <button onClick={handleSignOut} style={{ background: '#1e293b', border: 'none', color: '#94a3b8', padding: '8px', borderRadius: '8px', cursor: 'pointer' }} title="Sign Out">
+            <FiLogOut size={16} />
+          </button>
+        </div>
       </header>
 
       {/* Main Container */}
@@ -512,9 +673,45 @@ export default function App() {
           </div>
         )}
 
-        {/* --- TAB 2: FIND FRIENDS & LIVE USER SEARCH --- */}
+        {/* --- TAB 2: FIND FRIENDS WITH INCOMING REQUEST CONTROL --- */}
         {activeTab === 'find' && (
           <div>
+            {/* Incoming Requests Banner Section */}
+            {incomingRequests.length > 0 && (
+              <div style={{ backgroundColor: '#151c2c', border: '1px solid #2563eb', borderRadius: '12px', padding: '16px', marginBottom: '20px' }}>
+                <h3 style={{ fontSize: '14px', fontWeight: '700', margin: '0 0 12px 0', color: '#60a5fa', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <FiUserPlus /> Incoming Friend Requests ({incomingRequests.length})
+                </h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {incomingRequests.map(req => (
+                    <div key={req.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#0f172a', padding: '10px 14px', borderRadius: '8px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <img src={req.sender?.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200'} alt="u" style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover' }} />
+                        <div>
+                          <div style={{ fontSize: '13px', fontWeight: '600' }}>{req.sender?.full_name}</div>
+                          <div style={{ fontSize: '11px', color: '#94a3b8' }}>@{req.sender?.username}</div>
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <button
+                          onClick={() => handleRespondFriendRequest(req.id, 'accepted')}
+                          style={{ padding: '6px 14px', backgroundColor: '#22c55e', border: 'none', borderRadius: '6px', color: '#fff', fontSize: '12px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                        >
+                          <FiUserCheck /> Accept
+                        </button>
+                        <button
+                          onClick={() => handleRespondFriendRequest(req.id, 'declined')}
+                          style={{ padding: '6px 14px', backgroundColor: '#ef4444', border: 'none', borderRadius: '6px', color: '#fff', fontSize: '12px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                        >
+                          <FiUserX /> Decline
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div style={{ marginBottom: '16px' }}>
               <h2 style={{ fontSize: '16px', fontWeight: '700', margin: '0 0 4px 0' }}>Find Friends & Registered Members</h2>
               <p style={{ fontSize: '12px', color: '#94a3b8', margin: 0 }}>Search registered members in the live database.</p>
@@ -536,36 +733,47 @@ export default function App() {
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '14px' }}>
-              {dbUsers.map(user => (
-                <div key={user.id} style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '12px', padding: '16px', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
-                  <img src={user.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200'} alt="u" style={{ width: '64px', height: '64px', borderRadius: '50%', objectFit: 'cover', marginBottom: '10px' }} />
+              {dbUsers.map(user => {
+                const reqStatus = sentRequestMap[user.id];
+                return (
+                  <div key={user.id} style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '12px', padding: '16px', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
+                    <img src={user.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200'} alt="u" style={{ width: '64px', height: '64px', borderRadius: '50%', objectFit: 'cover', marginBottom: '10px' }} />
 
-                  <div style={{ fontSize: '14px', fontWeight: '700', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', marginBottom: '2px' }}>
-                    {user.full_name}
-                    {user.verified && <FiCheckCircle size={13} color="#3b82f6" title="Verified Account" />}
-                  </div>
-                  <div style={{ fontSize: '11px', color: '#60a5fa', marginBottom: '8px' }}>@{user.username}</div>
-                  <p style={{ fontSize: '12px', color: '#94a3b8', lineHeight: '1.4', margin: '0 0 14px 0', flex: 1 }}>{user.bio || 'LCF Member'}</p>
+                    <div style={{ fontSize: '14px', fontWeight: '700', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', marginBottom: '2px' }}>
+                      {user.full_name}
+                      {user.verified && <FiCheckCircle size={13} color="#3b82f6" title="Verified Account" />}
+                    </div>
+                    <div style={{ fontSize: '11px', color: '#60a5fa', marginBottom: '8px' }}>@{user.username}</div>
+                    <p style={{ fontSize: '12px', color: '#94a3b8', lineHeight: '1.4', margin: '0 0 14px 0', flex: 1 }}>{user.bio || 'LCF Member'}</p>
 
-                  <div style={{ display: 'flex', gap: '8px', width: '100%' }}>
-                    <button
-                      onClick={() => {
-                        setFriendRequests(prev => ({ ...prev, [user.username]: 'pending' }));
-                        alert(`Friend request sent to @${user.username}!`);
-                      }}
-                      style={{ flex: 1, padding: '6px', backgroundColor: friendRequests[user.username] ? '#1e293b' : '#2563eb', border: 'none', borderRadius: '6px', color: '#fff', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}
-                    >
-                      {friendRequests[user.username] === 'pending' ? 'Request Sent' : 'Add Friend'}
-                    </button>
-                    <button
-                      onClick={() => { setSelectedChatUser(user); setActiveTab('chats'); }}
-                      style={{ padding: '6px 10px', backgroundColor: '#1e293b', border: 'none', borderRadius: '6px', color: '#60a5fa', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}
-                    >
-                      Chat
-                    </button>
+                    <div style={{ display: 'flex', gap: '8px', width: '100%' }}>
+                      <button
+                        disabled={reqStatus === 'pending' || reqStatus === 'accepted'}
+                        onClick={() => handleSendFriendRequest(user)}
+                        style={{
+                          flex: 1,
+                          padding: '6px',
+                          backgroundColor: reqStatus === 'accepted' ? '#22c55e' : (reqStatus === 'pending' ? '#1e293b' : '#2563eb'),
+                          border: 'none',
+                          borderRadius: '6px',
+                          color: '#fff',
+                          fontSize: '11px',
+                          fontWeight: '600',
+                          cursor: reqStatus ? 'default' : 'pointer'
+                        }}
+                      >
+                        {reqStatus === 'accepted' ? 'Friends' : (reqStatus === 'pending' ? 'Request Sent' : 'Add Friend')}
+                      </button>
+                      <button
+                        onClick={() => { setSelectedChatUser(user); setActiveTab('chats'); }}
+                        style={{ padding: '6px 10px', backgroundColor: '#1e293b', border: 'none', borderRadius: '6px', color: '#60a5fa', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}
+                      >
+                        Chat
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
@@ -738,7 +946,7 @@ export default function App() {
           </div>
         )}
 
-        {/* --- TAB 5: PROFILE WITH SAVE PROFILE BUTTON --- */}
+        {/* --- TAB 5: PROFILE --- */}
         {activeTab === 'profile' && (
           <div style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '14px', overflow: 'hidden' }}>
             <div style={{ height: '140px', backgroundImage: `url(${currentUser?.cover_url})`, backgroundSize: 'cover', backgroundPosition: 'center', position: 'relative' }}>
@@ -771,7 +979,7 @@ export default function App() {
               <p style={{ fontSize: '13px', color: '#cbd5e1', lineHeight: '1.4', margin: '0 0 14px 0' }}>{currentUser?.bio}</p>
             </div>
 
-            {/* Edit Profile Modal with Explicit Save Button */}
+            {/* Edit Profile Modal */}
             {isEditingProfile && (
               <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '16px' }}>
                 <div style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '14px', padding: '20px', width: '100%', maxWidth: '400px' }}>
@@ -801,7 +1009,7 @@ export default function App() {
       </main>
 
       {/* Mobile Bottom Bar Navigation */}
-      <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(15, 23, 42, 0.98)', borderTop: '1px solid #1e293b', display: 'flex', justifyContent: 'space-around', padding: '12px 0', zIndex: 100 }}>
+      <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(15, 23, 42, 0.98)', borderTop: '1px solid #1e293b', display: 'flex', justifyContent: 'space-around', padding: '12px 0', zIndex: '100' }}>
         {[
           { id: 'feed', label: 'Feed', icon: <FiHome size={20} /> },
           { id: 'find', label: 'Friends', icon: <FiUsers size={20} /> },
