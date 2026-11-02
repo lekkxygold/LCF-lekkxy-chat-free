@@ -21,7 +21,8 @@ import {
   FiUserCheck,
   FiUserX,
   FiMessageCircle,
-  FiRefreshCw
+  FiRefreshCw,
+  FiDownload
 } from 'react-icons/fi';
 
 export default function App() {
@@ -38,6 +39,10 @@ export default function App() {
   const [authError, setAuthError] = useState('');
   const [authSuccess, setAuthSuccess] = useState('');
   const [resendingEmail, setResendingEmail] = useState(false);
+
+  // PWA Install Prompt State
+  const [installPromptEvent, setInstallPromptEvent] = useState(null);
+  const [showInstallBanner, setShowInstallBanner] = useState(false);
 
   // User Profile State
   const [currentUser, setCurrentUser] = useState(null);
@@ -99,7 +104,19 @@ export default function App() {
       }
     });
 
-    return () => subscription.unsubscribe();
+    // Listen for mobile install prompt availability
+    const handleBeforeInstallPrompt = (e) => {
+      e.preventDefault();
+      setInstallPromptEvent(e);
+      setShowInstallBanner(true);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+
+    return () => {
+      subscription.unsubscribe();
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    };
   }, []);
 
   useEffect(() => {
@@ -109,6 +126,19 @@ export default function App() {
       fetchFriendRequests();
     }
   }, [session]);
+
+  const handleInstallClick = async () => {
+    if (installPromptEvent) {
+      installPromptEvent.prompt();
+      const { outcome } = await installPromptEvent.userChoice;
+      if (outcome === 'accepted') {
+        setInstallPromptEvent(null);
+        setShowInstallBanner(false);
+      }
+    } else {
+      alert("To install LCF Mobile App on your device:\n\n• On Android (Chrome): Tap browser menu (⋮) -> 'Install app' or 'Add to Home Screen'.\n• On iPhone (Safari): Tap the Share button (⎋) -> 'Add to Home Screen'.");
+    }
+  };
 
   const fetchUserProfile = async (user) => {
     const isVerifiedSpecial = user.email?.toLowerCase() === 'omoopeola1@gmail.com';
@@ -295,7 +325,6 @@ export default function App() {
     }
   };
 
-  // Real-time messages & notification subscription
   useEffect(() => {
     if (!session) return;
 
@@ -326,7 +355,6 @@ export default function App() {
     };
   }, [session, dbUsers]);
 
-  // Robust Private Chat 1-on-1 Fetch & Realtime Sync
   useEffect(() => {
     if (!session || !selectedChatUser) return;
 
@@ -649,6 +677,15 @@ export default function App() {
               <p style={{ margin: 0 }}>Back to <span onClick={() => { setAuthMode('login'); setAuthError(''); setAuthSuccess(''); }} style={{ color: '#60a5fa', cursor: 'pointer', fontWeight: '600' }}>Sign in</span></p>
             )}
           </div>
+
+          <div style={{ marginTop: '20px', borderTop: '1px solid #1e293b', paddingTop: '16px', textAlign: 'center' }}>
+            <button
+              onClick={handleInstallClick}
+              style={{ width: '100%', padding: '10px', backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px', color: '#60a5fa', fontSize: '12px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+            >
+              <FiDownload size={14} /> Install LCF Mobile App
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -696,6 +733,14 @@ export default function App() {
         </nav>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <button
+            onClick={handleInstallClick}
+            style={{ backgroundColor: '#1e293b', border: '1px solid #334155', color: '#60a5fa', padding: '8px 12px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: '600' }}
+            title="Download/Install App"
+          >
+            <FiDownload size={14} /> <span style={{ display: window.innerWidth < 768 ? 'none' : 'inline' }}>Install App</span>
+          </button>
+
           <div style={{ position: 'relative' }}>
             <button
               onClick={() => setShowNotifications(!showNotifications)}
