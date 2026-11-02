@@ -21,7 +21,6 @@ import {
   FiUserCheck,
   FiUserX,
   FiMessageCircle,
-  FiMail,
   FiRefreshCw
 } from 'react-icons/fi';
 
@@ -296,6 +295,76 @@ export default function App() {
     }
   };
 
+  // Real-time messages & notification subscription
+  useEffect(() => {
+    if (!session) return;
+
+    const channel = supabase
+      .channel('public:notifications_stream')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, payload => {
+        if (payload.new.recipient_id === session.user.id) {
+          const sender = dbUsers.find(u => u.id === payload.new.sender_id) || { full_name: 'Someone' };
+          setNotifications(prev => [
+            { id: Date.now(), text: `New message from ${sender.full_name || 'Someone'}`, time: 'Just now', type: 'message' },
+            ...prev
+          ]);
+        }
+      })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'friend_requests' }, payload => {
+        if (payload.new.recipient_id === session.user.id) {
+          fetchFriendRequests();
+          setNotifications(prev => [
+            { id: Date.now(), text: `You received a new friend request!`, time: 'Just now', type: 'friend' },
+            ...prev
+          ]);
+        }
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [session, dbUsers]);
+
+  // Robust Private Chat 1-on-1 Fetch & Realtime Sync
+  useEffect(() => {
+    if (!session || !selectedChatUser) return;
+
+    const fetchMessages = async () => {
+      const { data, error } = await supabase
+        .from('messages')
+        .select('*')
+        .or(`and(sender_id.eq.${session.user.id},recipient_id.eq.${selectedChatUser.id}),and(sender_id.eq.${selectedChatUser.id},recipient_id.eq.${session.user.id})`)
+        .order('created_at', { ascending: true });
+
+      if (!error && data) {
+        setMessages(data);
+      }
+    };
+
+    fetchMessages();
+
+    const chatChannel = supabase
+      .channel(`chat_${session.user.id}_${selectedChatUser.id}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, payload => {
+        const msg = payload.new;
+        if (
+          (msg.sender_id === session.user.id && msg.recipient_id === selectedChatUser.id) ||
+          (msg.sender_id === selectedChatUser.id && msg.recipient_id === session.user.id)
+        ) {
+          setMessages(prev => {
+            if (prev.some(m => m.id === msg.id)) return prev;
+            return [...prev, msg];
+          });
+        }
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(chatChannel);
+    };
+  }, [session, selectedChatUser]);
+
   const handleAuth = async (e) => {
     e.preventDefault();
     setAuthError('');
@@ -343,7 +412,6 @@ export default function App() {
     }
   };
 
-  // RESEND EXPIRED VERIFICATION EMAIL FUNCTION
   const handleResendVerification = async (e) => {
     e.preventDefault();
     if (!email.trim()) {
@@ -451,11 +519,20 @@ export default function App() {
       image: chatPhotoBase64
     };
 
-    const { data, error } = await supabase.from('messages').insert([msg]).select().single();
-    if (!error && data) {
-      setMessages(prev => [...prev, data]);
-      setNewMessage('');
-      setChatPhotoBase64(null);
+    const tempMsg = { ...msg, id: Date.now().toString(), created_at: new Date().toISOString() };
+    setMessages(prev => [...prev, tempMsg]);
+    setNewMessage('');
+    setChatPhotoBase64(null);
+
+    try {
+      const { data, error } = await supabase.from('messages').insert([msg]).select().single();
+      if (error) throw error;
+      if (data) {
+        setMessages(prev => prev.map(m => m.id === tempMsg.id ? data : m));
+      }
+    } catch (err) {
+      console.log('Message send error:', err);
+      alert('Failed to send message: ' + err.message);
     }
   };
 
@@ -470,7 +547,6 @@ export default function App() {
     );
   }
 
-  // --- AUTH SCREEN WITH RESEND LINK OPTION ---
   if (!session) {
     return (
       <div style={{ backgroundColor: '#0b0f17', color: '#f8fafc', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
@@ -478,7 +554,7 @@ export default function App() {
           <div style={{ textAlign: 'center', marginBottom: '24px' }}>
             <h1 style={{ fontSize: '22px', fontWeight: '700', color: '#fff', margin: '0 0 6px' }}>LCF Social Hub</h1>
             <p style={{ fontSize: '13px', color: '#94a3b8', margin: 0 }}>
-              {authMode === 'resend' ? 'Resend Verification Link' : 'Friend Requests & Message Notifications'}
+              {authMode === 'resend' ? 'Resend Verification Link' : 'Secure and Private Chat'}
             </p>
           </div>
 
@@ -494,7 +570,6 @@ export default function App() {
             </div>
           )}
 
-          {/* LOGIN & SIGNUP FORMS */}
           {(authMode === 'login' || authMode === 'signup') && (
             <form onSubmit={handleAuth} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               {authMode === 'signup' && (
@@ -539,7 +614,6 @@ export default function App() {
             </form>
           )}
 
-          {/* RESEND VERIFICATION FORM */}
           {authMode === 'resend' && (
             <form onSubmit={handleResendVerification} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               <p style={{ fontSize: '12px', color: '#94a3b8', margin: '0 0 6px 0', lineHeight: '1.4' }}>
@@ -559,7 +633,6 @@ export default function App() {
             </form>
           )}
 
-          {/* CONTROLS */}
           <div style={{ textAlign: 'center', marginTop: '18px', fontSize: '13px', color: '#94a3b8', display: 'flex', flexDirection: 'column', gap: '8px' }}>
             {authMode === 'login' && (
               <>
@@ -581,7 +654,6 @@ export default function App() {
     );
   }
 
-  // --- MAIN APP CONTENT ---
   return (
     <div style={{ backgroundColor: '#0b0f17', color: '#f8fafc', minHeight: '100vh', paddingBottom: '80px', fontFamily: 'Inter, system-ui, sans-serif' }}>
       <header style={{ position: 'sticky', top: 0, zIndex: 100, backgroundColor: 'rgba(15, 23, 42, 0.95)', backdropFilter: 'blur(10px)', borderBottom: '1px solid #1e293b', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
