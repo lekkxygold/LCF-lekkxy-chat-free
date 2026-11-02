@@ -42,7 +42,7 @@ export default function App() {
 
   // PWA Install Prompt State
   const [installPromptEvent, setInstallPromptEvent] = useState(null);
-  const [showInstallBanner, setShowInstallBanner] = useState(false);
+  const [showInstallModal, setShowInstallModal] = useState(false);
 
   // User Profile State
   const [currentUser, setCurrentUser] = useState(null);
@@ -104,11 +104,9 @@ export default function App() {
       }
     });
 
-    // Listen for mobile install prompt availability
     const handleBeforeInstallPrompt = (e) => {
       e.preventDefault();
       setInstallPromptEvent(e);
-      setShowInstallBanner(true);
     };
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
@@ -133,10 +131,9 @@ export default function App() {
       const { outcome } = await installPromptEvent.userChoice;
       if (outcome === 'accepted') {
         setInstallPromptEvent(null);
-        setShowInstallBanner(false);
       }
     } else {
-      alert("To install LCF Mobile App on your device:\n\n• On Android (Chrome): Tap browser menu (⋮) -> 'Install app' or 'Add to Home Screen'.\n• On iPhone (Safari): Tap the Share button (⎋) -> 'Add to Home Screen'.");
+      setShowInstallModal(true);
     }
   };
 
@@ -577,13 +574,11 @@ export default function App() {
 
   if (!session) {
     return (
-      <div style={{ backgroundColor: '#0b0f17', color: '#f8fafc', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
-        <div style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '16px', padding: '32px', width: '100%', maxWidth: '400px' }}>
+      <div style={{ backgroundColor: '#0b0f17', color: '#f8fafc', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', boxSizing: 'border-box', width: '100vw' }}>
+        <div style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '16px', padding: '32px', width: '100%', maxWidth: '400px', boxSizing: 'border-box' }}>
           <div style={{ textAlign: 'center', marginBottom: '24px' }}>
             <h1 style={{ fontSize: '22px', fontWeight: '700', color: '#fff', margin: '0 0 6px' }}>LCF Social Hub</h1>
-            <p style={{ fontSize: '13px', color: '#94a3b8', margin: 0 }}>
-              {authMode === 'resend' ? 'Resend Verification Link' : 'Secure and Private Chat'}
-            </p>
+            <p style={{ fontSize: '13px', color: '#94a3b8', margin: 0 }}>Secure and Private Chat</p>
           </div>
 
           {authSuccess && (
@@ -677,23 +672,14 @@ export default function App() {
               <p style={{ margin: 0 }}>Back to <span onClick={() => { setAuthMode('login'); setAuthError(''); setAuthSuccess(''); }} style={{ color: '#60a5fa', cursor: 'pointer', fontWeight: '600' }}>Sign in</span></p>
             )}
           </div>
-
-          <div style={{ marginTop: '20px', borderTop: '1px solid #1e293b', paddingTop: '16px', textAlign: 'center' }}>
-            <button
-              onClick={handleInstallClick}
-              style={{ width: '100%', padding: '10px', backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px', color: '#60a5fa', fontSize: '12px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
-            >
-              <FiDownload size={14} /> Install LCF Mobile App
-            </button>
-          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div style={{ backgroundColor: '#0b0f17', color: '#f8fafc', minHeight: '100vh', paddingBottom: '80px', fontFamily: 'Inter, system-ui, sans-serif' }}>
-      <header style={{ position: 'sticky', top: 0, zIndex: 100, backgroundColor: 'rgba(15, 23, 42, 0.95)', backdropFilter: 'blur(10px)', borderBottom: '1px solid #1e293b', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+    <div style={{ backgroundColor: '#0b0f17', color: '#f8fafc', minHeight: '100vh', width: '100vw', boxSizing: 'border-box', paddingBottom: '80px', fontFamily: 'Inter, system-ui, sans-serif', overflowX: 'hidden' }}>
+      <header style={{ position: 'sticky', top: 0, zIndex: 100, backgroundColor: 'rgba(15, 23, 42, 0.95)', backdropFilter: 'blur(10px)', borderBottom: '1px solid #1e293b', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', boxSizing: 'border-box' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'linear-gradient(135deg, #2563eb, #1d4ed8)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 'bold', fontSize: '12px' }}>
             LCF
@@ -756,7 +742,7 @@ export default function App() {
             </button>
 
             {showNotifications && (
-              <div style={{ position: 'absolute', right: 0, top: '40px', width: '300px', backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '12px', boxShadow: '0 8px 24px rgba(0,0,0,0.5)', zIndex: 1000, overflow: 'hidden' }}>
+              <div style={{ position: 'absolute', right: 0, top: '40px', width: '280px', backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '12px', boxShadow: '0 8px 24px rgba(0,0,0,0.5)', zIndex: 1000, overflow: 'hidden' }}>
                 <div style={{ padding: '10px 14px', borderBottom: '1px solid #1e293b', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontSize: '12px', fontWeight: '700' }}>Notifications & Requests</span>
                   <button onClick={() => setNotifications([])} style={{ background: 'none', border: 'none', color: '#60a5fa', fontSize: '11px', cursor: 'pointer' }}>Clear all</button>
@@ -806,10 +792,11 @@ export default function App() {
         </div>
       </header>
 
-      <main style={{ maxWidth: '800px', margin: '0 auto', padding: '16px' }}>
+      {/* FULL WIDTH MOBILE CONTAINER */}
+      <main style={{ width: '100%', maxWidth: '800px', margin: '0 auto', padding: window.innerWidth < 768 ? '8px' : '16px', boxSizing: 'border-box' }}>
         {activeTab === 'feed' && (
           <div>
-            <div style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '12px', padding: '14px', marginBottom: '16px' }}>
+            <div style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: window.innerWidth < 768 ? '0px' : '12px', padding: '14px', marginBottom: '16px' }}>
               <div style={{ display: 'flex', gap: '10px' }}>
                 <img src={currentUser?.avatar_url} alt="avatar" style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover' }} />
                 <textarea
@@ -846,7 +833,7 @@ export default function App() {
               const comments = postCommentsMap[post.id] || [];
               const isCommentsOpen = openCommentsPostId === post.id;
               return (
-                <div key={post.id} style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '12px', padding: '16px', marginBottom: '14px' }}>
+                <div key={post.id} style={{ backgroundColor: '#151c2c', border: window.innerWidth < 768 ? 'none' : '1px solid #1e293b', borderBottom: '1px solid #1e293b', borderRadius: window.innerWidth < 768 ? '0px' : '12px', padding: '16px', marginBottom: '14px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
                     <img src={post.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200'} alt="u" style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover' }} />
                     <div>
@@ -905,7 +892,7 @@ export default function App() {
         )}
 
         {activeTab === 'find' && (
-          <div>
+          <div style={{ padding: '0 4px' }}>
             {incomingRequests.length > 0 && (
               <div style={{ backgroundColor: '#151c2c', border: '1px solid #2563eb', borderRadius: '12px', padding: '16px', marginBottom: '20px' }}>
                 <h3 style={{ fontSize: '14px', fontWeight: '700', margin: '0 0 12px 0', color: '#60a5fa', display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -1011,7 +998,7 @@ export default function App() {
         )}
 
         {activeTab === 'reels' && (
-          <div>
+          <div style={{ padding: '0 4px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
               <h2 style={{ fontSize: '16px', fontWeight: '700', margin: 0 }}>Community Reels</h2>
               <button onClick={() => setIsCreatingReel(true)} style={{ padding: '6px 14px', backgroundColor: '#2563eb', border: 'none', borderRadius: '8px', color: '#fff', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
@@ -1063,7 +1050,7 @@ export default function App() {
         )}
 
         {activeTab === 'chats' && (
-          <div style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '14px', height: '520px', display: 'grid', gridTemplateColumns: window.innerWidth < 768 && selectedChatUser ? '1fr' : (window.innerWidth < 768 ? '1fr' : '260px 1fr'), overflow: 'hidden' }}>
+          <div style={{ backgroundColor: '#151c2c', border: window.innerWidth < 768 ? 'none' : '1px solid #1e293b', borderRadius: window.innerWidth < 768 ? '0px' : '14px', height: window.innerWidth < 768 ? 'calc(100vh - 140px)' : '520px', display: 'grid', gridTemplateColumns: window.innerWidth < 768 && selectedChatUser ? '1fr' : (window.innerWidth < 768 ? '1fr' : '260px 1fr'), overflow: 'hidden' }}>
             <div style={{ borderRight: '1px solid #1e293b', backgroundColor: '#0f172a', padding: '12px', display: window.innerWidth < 768 && selectedChatUser ? 'none' : 'block' }}>
               <h3 style={{ fontSize: '14px', fontWeight: '700', margin: '0 0 10px 0' }}>Direct Messages</h3>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', overflowY: 'auto', maxHeight: '420px' }}>
@@ -1172,7 +1159,7 @@ export default function App() {
         )}
 
         {activeTab === 'profile' && (
-          <div style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '14px', overflow: 'hidden' }}>
+          <div style={{ backgroundColor: '#151c2c', border: window.innerWidth < 768 ? 'none' : '1px solid #1e293b', borderRadius: window.innerWidth < 768 ? '0px' : '14px', overflow: 'hidden' }}>
             <div style={{ height: '140px', backgroundImage: `url(${currentUser?.cover_url})`, backgroundSize: 'cover', backgroundPosition: 'center', position: 'relative' }}>
               <label style={{ position: 'absolute', bottom: '10px', right: '10px', backgroundColor: 'rgba(0,0,0,0.7)', padding: '6px 10px', borderRadius: '6px', fontSize: '11px', cursor: 'pointer', color: '#fff', display: 'flex', alignItems: 'center', gap: '4px' }}>
                 <FiCamera /> Change Cover Photo
@@ -1180,7 +1167,7 @@ export default function App() {
               </label>
             </div>
 
-            <div style={{ padding: '0 20px 20px', position: 'relative', marginTop: '-45px' }}>
+            <div style={{ padding: '0 16px 20px', position: 'relative', marginTop: '-45px' }}>
               <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: '12px' }}>
                 <div style={{ position: 'relative' }}>
                   <img src={currentUser?.avatar_url} alt="avatar" style={{ width: '90px', height: '90px', borderRadius: '50%', border: '4px solid #151c2c', objectFit: 'cover' }} />
@@ -1232,7 +1219,30 @@ export default function App() {
         )}
       </main>
 
-      <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(15, 23, 42, 0.98)', borderTop: '1px solid #1e293b', display: 'flex', justifyContent: 'space-around', padding: '12px 0', zIndex: '100' }}>
+      {/* CLEAN APP INSTALL MODAL (Replaces intrusive alert popup) */}
+      {showInstallModal && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '16px' }}>
+          <div style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '16px', padding: '24px', width: '100%', maxWidth: '36px0', boxSizing: 'border-box' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+              <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#fff', margin: 0 }}>Install LCF Mobile App</h3>
+              <button onClick={() => setShowInstallModal(false)} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer' }}><FiX size={18} /></button>
+            </div>
+            <p style={{ fontSize: '13px', color: '#94a3b8', lineHeight: '1.5', margin: '0 0 16px 0' }}>
+              To install LCF as an app on your phone:
+            </p>
+            <div style={{ fontSize: '12px', color: '#e2e8f0', display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '20px', backgroundColor: '#0f172a', padding: '12px', borderRadius: '8px' }}>
+              <div>🟢 **Android (Chrome):** Tap browser menu (⋮) $\rightarrow$ **Install app** or **Add to Home screen**.</div>
+              <div>🍏 **iPhone (Safari):** Tap Share button (⎋) $\rightarrow$ **Add to Home Screen**.</div>
+            </div>
+            <button onClick={() => setShowInstallModal(false)} style={{ width: '100%', padding: '10px', backgroundColor: '#2563eb', border: 'none', borderRadius: '8px', color: '#fff', fontWeight: '600', fontSize: '13px', cursor: 'pointer' }}>
+              Got It
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* MOBILE BOTTOM NAVIGATION BAR */}
+      <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(15, 23, 42, 0.98)', borderTop: '1px solid #1e293b', display: 'flex', justifyContent: 'space-around', padding: '10px 0', zIndex: '100', width: '100%', boxSizing: 'border-box' }}>
         {[
           { id: 'feed', label: 'Feed', icon: <FiHome size={20} /> },
           { id: 'find', label: 'Friends', icon: <FiUsers size={20} /> },
