@@ -140,8 +140,10 @@ export default function App() {
 
   const fetchPosts = async () => {
     try {
-      const { data } = await supabase.from('posts').select('*').order('created_at', { ascending: false });
-      if (data) setPosts(data);
+      const { data, error } = await supabase.from('posts').select('*').order('created_at', { ascending: false });
+      if (!error && data) {
+        setPosts(data);
+      }
     } catch (e) {
       console.log('Posts fetch error:', e);
     }
