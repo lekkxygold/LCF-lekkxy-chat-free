@@ -20,7 +20,9 @@ import {
   FiUserPlus,
   FiUserCheck,
   FiUserX,
-  FiMessageCircle
+  FiMessageCircle,
+  FiMail,
+  FiRefreshCw
 } from 'react-icons/fi';
 
 export default function App() {
@@ -29,12 +31,14 @@ export default function App() {
   const [loading, setLoading] = useState(true);
 
   // Auth State
-  const [authMode, setAuthMode] = useState('login');
+  const [authMode, setAuthMode] = useState('login'); // 'login', 'signup', 'resend'
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [username, setUsername] = useState('');
   const [fullName, setFullName] = useState('');
   const [authError, setAuthError] = useState('');
+  const [authSuccess, setAuthSuccess] = useState('');
+  const [resendingEmail, setResendingEmail] = useState(false);
 
   // User Profile State
   const [currentUser, setCurrentUser] = useState(null);
@@ -222,7 +226,6 @@ export default function App() {
   const fetchFriendRequests = async () => {
     if (!session) return;
     try {
-      // Incoming requests
       const { data: incoming } = await supabase
         .from('friend_requests')
         .select('*, sender:sender_id(*)')
@@ -233,7 +236,6 @@ export default function App() {
         setIncomingRequests(incoming);
       }
 
-      // Sent requests and accepted count
       const { data: sent } = await supabase
         .from('friend_requests')
         .select('*')
@@ -294,72 +296,10 @@ export default function App() {
     }
   };
 
-  // Real-time notifications for messages and friend requests
-  useEffect(() => {
-    if (!session) return;
-
-    const channel = supabase
-      .channel('public:notifications_stream')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, payload => {
-        if (payload.new.recipient_id === session.user.id) {
-          const sender = dbUsers.find(u => u.id === payload.new.sender_id) || { full_name: 'Someone' };
-          setNotifications(prev => [
-            { id: Date.now(), text: `New message from ${sender.full_name || 'Someone'}`, time: 'Just now', type: 'message' },
-            ...prev
-          ]);
-        }
-      })
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'friend_requests' }, payload => {
-        if (payload.new.recipient_id === session.user.id) {
-          fetchFriendRequests();
-          setNotifications(prev => [
-            { id: Date.now(), text: `You received a new friend request!`, time: 'Just now', type: 'friend' },
-            ...prev
-          ]);
-        }
-      })
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [session, dbUsers]);
-
-  useEffect(() => {
-    if (!session || !selectedChatUser) return;
-
-    const fetchMessages = async () => {
-      const { data } = await supabase
-        .from('messages')
-        .select('*')
-        .or(`and(sender_id.eq.${session.user.id},recipient_id.eq.${selectedChatUser.id}),and(sender_id.eq.${selectedChatUser.id},recipient_id.eq.${session.user.id})`)
-        .order('created_at', { ascending: true });
-
-      if (data) setMessages(data);
-    };
-
-    fetchMessages();
-
-    const chatChannel = supabase
-      .channel('public:messages')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, payload => {
-        if (
-          (payload.new.sender_id === session.user.id && payload.new.recipient_id === selectedChatUser.id) ||
-          (payload.new.sender_id === selectedChatUser.id && payload.new.recipient_id === session.user.id)
-        ) {
-          setMessages(prev => [...prev, payload.new]);
-        }
-      })
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(chatChannel);
-    };
-  }, [session, selectedChatUser]);
-
   const handleAuth = async (e) => {
     e.preventDefault();
     setAuthError('');
+    setAuthSuccess('');
     setLoading(true);
 
     try {
@@ -385,16 +325,49 @@ export default function App() {
           }]);
         }
 
-        alert('Registration successful! You can now sign in.');
+        setAuthSuccess('Registration successful! Please check your email for the verification link.');
         setAuthMode('login');
-      } else {
+      } else if (authMode === 'login') {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
-        if (error) throw error;
+        if (error) {
+          if (error.message.toLowerCase().includes('email not confirmed')) {
+            throw new Error('Your email is not verified yet. Please verify or request a new link below.');
+          }
+          throw error;
+        }
       }
     } catch (err) {
       setAuthError(err.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // RESEND EXPIRED VERIFICATION EMAIL FUNCTION
+  const handleResendVerification = async (e) => {
+    e.preventDefault();
+    if (!email.trim()) {
+      setAuthError('Please enter your registered email address.');
+      return;
+    }
+    setAuthError('');
+    setAuthSuccess('');
+    setResendingEmail(true);
+
+    try {
+      const { error } = await supabase.auth.resend({
+        type: 'signup',
+        email: email.trim()
+      });
+
+      if (error) throw error;
+
+      setAuthSuccess(`A fresh verification link has been sent to ${email}! Please check your inbox or spam folder.`);
+      setAuthMode('login');
+    } catch (err) {
+      setAuthError(err.message || 'Failed to resend confirmation email.');
+    } finally {
+      setResendingEmail(false);
     }
   };
 
@@ -497,69 +470,110 @@ export default function App() {
     );
   }
 
-  // --- AUTH SCREEN ---
+  // --- AUTH SCREEN WITH RESEND LINK OPTION ---
   if (!session) {
     return (
       <div style={{ backgroundColor: '#0b0f17', color: '#f8fafc', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
         <div style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '16px', padding: '32px', width: '100%', maxWidth: '400px' }}>
           <div style={{ textAlign: 'center', marginBottom: '24px' }}>
             <h1 style={{ fontSize: '22px', fontWeight: '700', color: '#fff', margin: '0 0 6px' }}>LCF Social Hub</h1>
-            <p style={{ fontSize: '13px', color: '#94a3b8', margin: 0 }}>Friend Requests & Message Notifications</p>
+            <p style={{ fontSize: '13px', color: '#94a3b8', margin: 0 }}>
+              {authMode === 'resend' ? 'Resend Verification Link' : 'Friend Requests & Message Notifications'}
+            </p>
           </div>
 
+          {authSuccess && (
+            <div style={{ backgroundColor: 'rgba(34, 197, 94, 0.1)', border: '1px solid rgba(34, 197, 94, 0.3)', color: '#4ade80', padding: '10px', borderRadius: '8px', fontSize: '12px', marginBottom: '16px', lineHeight: '1.4' }}>
+              {authSuccess}
+            </div>
+          )}
+
           {authError && (
-            <div style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', color: '#f87171', padding: '10px', borderRadius: '8px', fontSize: '12px', marginBottom: '16px' }}>
+            <div style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', color: '#f87171', padding: '10px', borderRadius: '8px', fontSize: '12px', marginBottom: '16px', lineHeight: '1.4' }}>
               {authError}
             </div>
           )}
 
-          <form onSubmit={handleAuth} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            {authMode === 'signup' && (
+          {/* LOGIN & SIGNUP FORMS */}
+          {(authMode === 'login' || authMode === 'signup') && (
+            <form onSubmit={handleAuth} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {authMode === 'signup' && (
+                <>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Full Name"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    style={{ width: '100%', padding: '12px', backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
+                  />
+                  <input
+                    type="text"
+                    required
+                    placeholder="Username"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    style={{ width: '100%', padding: '12px', backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
+                  />
+                </>
+              )}
+              <input
+                type="email"
+                required
+                placeholder="Email address"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                style={{ width: '100%', padding: '12px', backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
+              />
+              <input
+                type="password"
+                required
+                placeholder="Password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                style={{ width: '100%', padding: '12px', backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
+              />
+              <button type="submit" style={{ padding: '12px', backgroundColor: '#2563eb', border: 'none', borderRadius: '8px', color: '#fff', fontWeight: '600', fontSize: '13px', cursor: 'pointer', marginTop: '6px' }}>
+                {authMode === 'login' ? 'Sign In' : 'Create Account'}
+              </button>
+            </form>
+          )}
+
+          {/* RESEND VERIFICATION FORM */}
+          {authMode === 'resend' && (
+            <form onSubmit={handleResendVerification} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <p style={{ fontSize: '12px', color: '#94a3b8', margin: '0 0 6px 0', lineHeight: '1.4' }}>
+                If your verification link expired, enter your email below to receive a new link.
+              </p>
+              <input
+                type="email"
+                required
+                placeholder="Your registered email address"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                style={{ width: '100%', padding: '12px', backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
+              />
+              <button type="submit" disabled={resendingEmail} style={{ padding: '12px', backgroundColor: '#2563eb', border: 'none', borderRadius: '8px', color: '#fff', fontWeight: '600', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                <FiRefreshCw /> {resendingEmail ? 'Sending...' : 'Send New Verification Link'}
+              </button>
+            </form>
+          )}
+
+          {/* CONTROLS */}
+          <div style={{ textAlign: 'center', marginTop: '18px', fontSize: '13px', color: '#94a3b8', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {authMode === 'login' && (
               <>
-                <input
-                  type="text"
-                  required
-                  placeholder="Full Name"
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  style={{ width: '100%', padding: '12px', backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
-                />
-                <input
-                  type="text"
-                  required
-                  placeholder="Username"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  style={{ width: '100%', padding: '12px', backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
-                />
+                <p style={{ margin: 0 }}>No account? <span onClick={() => { setAuthMode('signup'); setAuthError(''); setAuthSuccess(''); }} style={{ color: '#60a5fa', cursor: 'pointer', fontWeight: '600' }}>Sign up</span></p>
+                <p style={{ margin: 0 }}><span onClick={() => { setAuthMode('resend'); setAuthError(''); setAuthSuccess(''); }} style={{ color: '#38bdf8', cursor: 'pointer', fontSize: '12px', textDecoration: 'underline' }}>Verification link expired? Resend email</span></p>
               </>
             )}
-            <input
-              type="email"
-              required
-              placeholder="Email address"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              style={{ width: '100%', padding: '12px', backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
-            />
-            <input
-              type="password"
-              required
-              placeholder="Password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              style={{ width: '100%', padding: '12px', backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
-            />
-            <button type="submit" style={{ padding: '12px', backgroundColor: '#2563eb', border: 'none', borderRadius: '8px', color: '#fff', fontWeight: '600', fontSize: '13px', cursor: 'pointer', marginTop: '6px' }}>
-              {authMode === 'login' ? 'Sign In' : 'Create Account'}
-            </button>
-          </form>
 
-          <div style={{ textAlign: 'center', marginTop: '18px', fontSize: '13px', color: '#94a3b8' }}>
-            {authMode === 'login' ? (
-              <p>No account? <span onClick={() => setAuthMode('signup')} style={{ color: '#60a5fa', cursor: 'pointer', fontWeight: '600' }}>Sign up</span></p>
-            ) : (
-              <p>Have an account? <span onClick={() => setAuthMode('login')} style={{ color: '#60a5fa', cursor: 'pointer', fontWeight: '600' }}>Sign in</span></p>
+            {authMode === 'signup' && (
+              <p style={{ margin: 0 }}>Have an account? <span onClick={() => { setAuthMode('login'); setAuthError(''); setAuthSuccess(''); }} style={{ color: '#60a5fa', cursor: 'pointer', fontWeight: '600' }}>Sign in</span></p>
+            )}
+
+            {authMode === 'resend' && (
+              <p style={{ margin: 0 }}>Back to <span onClick={() => { setAuthMode('login'); setAuthError(''); setAuthSuccess(''); }} style={{ color: '#60a5fa', cursor: 'pointer', fontWeight: '600' }}>Sign in</span></p>
             )}
           </div>
         </div>
@@ -567,11 +581,9 @@ export default function App() {
     );
   }
 
-  // --- MAIN APP ---
+  // --- MAIN APP CONTENT ---
   return (
     <div style={{ backgroundColor: '#0b0f17', color: '#f8fafc', minHeight: '100vh', paddingBottom: '80px', fontFamily: 'Inter, system-ui, sans-serif' }}>
-      
-      {/* Header */}
       <header style={{ position: 'sticky', top: 0, zIndex: 100, backgroundColor: 'rgba(15, 23, 42, 0.95)', backdropFilter: 'blur(10px)', borderBottom: '1px solid #1e293b', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'linear-gradient(135deg, #2563eb, #1d4ed8)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 'bold', fontSize: '12px' }}>
@@ -580,7 +592,6 @@ export default function App() {
           <span style={{ fontSize: '16px', fontWeight: '700' }}>LCF Hub</span>
         </div>
 
-        {/* Desktop Navbar */}
         <nav style={{ display: window.innerWidth < 768 ? 'none' : 'flex', gap: '4px', backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '24px', padding: '3px' }}>
           {[
             { id: 'feed', label: 'Feed', icon: <FiHome /> },
@@ -627,7 +638,6 @@ export default function App() {
               )}
             </button>
 
-            {/* Notifications Dropdown */}
             {showNotifications && (
               <div style={{ position: 'absolute', right: 0, top: '40px', width: '300px', backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '12px', boxShadow: '0 8px 24px rgba(0,0,0,0.5)', zIndex: 1000, overflow: 'hidden' }}>
                 <div style={{ padding: '10px 14px', borderBottom: '1px solid #1e293b', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -679,10 +689,7 @@ export default function App() {
         </div>
       </header>
 
-      {/* Main Container */}
       <main style={{ maxWidth: '800px', margin: '0 auto', padding: '16px' }}>
-        
-        {/* --- TAB 1: FEED --- */}
         {activeTab === 'feed' && (
           <div>
             <div style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '12px', padding: '14px', marginBottom: '16px' }}>
@@ -749,7 +756,6 @@ export default function App() {
                     </button>
                   </div>
 
-                  {/* Comments Section */}
                   {isCommentsOpen && (
                     <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid #1e293b' }}>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '10px', maxHeight: '180px', overflowY: 'auto' }}>
@@ -781,7 +787,6 @@ export default function App() {
           </div>
         )}
 
-        {/* --- TAB 2: FIND FRIENDS --- */}
         {activeTab === 'find' && (
           <div>
             {incomingRequests.length > 0 && (
@@ -888,7 +893,6 @@ export default function App() {
           </div>
         )}
 
-        {/* --- TAB 3: REELS --- */}
         {activeTab === 'reels' && (
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
@@ -941,14 +945,10 @@ export default function App() {
           </div>
         )}
 
-        {/* --- TAB 4: CHATS --- */}
         {activeTab === 'chats' && (
           <div style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '14px', height: '520px', display: 'grid', gridTemplateColumns: window.innerWidth < 768 && selectedChatUser ? '1fr' : (window.innerWidth < 768 ? '1fr' : '260px 1fr'), overflow: 'hidden' }}>
-            
-            {/* Contacts Directory */}
             <div style={{ borderRight: '1px solid #1e293b', backgroundColor: '#0f172a', padding: '12px', display: window.innerWidth < 768 && selectedChatUser ? 'none' : 'block' }}>
               <h3 style={{ fontSize: '14px', fontWeight: '700', margin: '0 0 10px 0' }}>Direct Messages</h3>
-              
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', overflowY: 'auto', maxHeight: '420px' }}>
                 {dbUsers.filter(u => u.id !== session?.user?.id).map(user => (
                   <div
@@ -969,7 +969,6 @@ export default function App() {
               </div>
             </div>
 
-            {/* Chat View */}
             <div style={{ display: window.innerWidth < 768 && !selectedChatUser ? 'none' : 'flex', flexDirection: 'column', height: '100%' }}>
               {selectedChatUser ? (
                 <>
@@ -1052,11 +1051,9 @@ export default function App() {
                 </div>
               )}
             </div>
-
           </div>
         )}
 
-        {/* --- TAB 5: PROFILE WITH FRIEND COUNTER --- */}
         {activeTab === 'profile' && (
           <div style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '14px', overflow: 'hidden' }}>
             <div style={{ height: '140px', backgroundImage: `url(${currentUser?.cover_url})`, backgroundSize: 'cover', backgroundPosition: 'center', position: 'relative' }}>
@@ -1090,7 +1087,6 @@ export default function App() {
               <p style={{ fontSize: '13px', color: '#cbd5e1', lineHeight: '1.4', margin: '0 0 14px 0' }}>{currentUser?.bio}</p>
             </div>
 
-            {/* Edit Profile Modal */}
             {isEditingProfile && (
               <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '16px' }}>
                 <div style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '14px', padding: '20px', width: '100%', maxWidth: '400px' }}>
@@ -1119,7 +1115,6 @@ export default function App() {
         )}
       </main>
 
-      {/* Mobile Navigation Bar */}
       <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(15, 23, 42, 0.98)', borderTop: '1px solid #1e293b', display: 'flex', justifyContent: 'space-around', padding: '12px 0', zIndex: '100' }}>
         {[
           { id: 'feed', label: 'Feed', icon: <FiHome size={20} /> },
