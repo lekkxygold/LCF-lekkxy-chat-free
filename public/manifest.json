@@ -3,13 +3,15 @@
   "name": "LCF Social Hub",
   "icons": [
     {
-      "src": "/favicon.ico",
-      "sizes": "64x64 32x32 24x24 16x16",
-      "type": "image/x-icon"
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect width='512' height='512' rx='128' fill='%232563eb'/><text x='50%' y='62%' font-family='Arial, sans-serif' font-weight='bold' font-size='220' fill='white' text-anchor='middle'>LCF</text></svg>",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
     }
   ],
   "start_url": "/",
   "display": "standalone",
+  "orientation": "portrait",
   "theme_color": "#0b0f17",
   "background_color": "#0b0f17"
 }
