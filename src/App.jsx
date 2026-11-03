@@ -163,7 +163,6 @@ export default function App() {
   const fetchUnreadMessageCounts = async () => {
     if (!session) return;
     try {
-      // Fetch all messages where current user is the recipient
       const { data, error } = await supabase
         .from('messages')
         .select('sender_id')
@@ -172,7 +171,6 @@ export default function App() {
       if (!error && data) {
         const counts = {};
         data.forEach(m => {
-          // Exclude messages from the user currently opened in chat
           if (!selectedChatUser || selectedChatUser.id !== m.sender_id) {
             counts[m.sender_id] = (counts[m.sender_id] || 0) + 1;
           }
@@ -389,16 +387,22 @@ export default function App() {
     }
   };
 
-  // Real-time notifications and real-time unread counter subscription
+  // Real-time unread counter and notifications subscription
   useEffect(() => {
     if (!session) return;
 
     const channel = supabase
       .channel('public:global_chat_stream')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, payload => {
-        const msg = payload.new;
-        if (msg.recipient_id === session.user.id) {
-          // If we are NOT currently looking at this sender's chat room, increment unread count in real-time
+      .on(
+        'postgres_changes',
+        { 
+          event: 'INSERT', 
+          schema: 'public', 
+          table: 'messages',
+          filter: `recipient_id=eq.${session.user.id}` 
+        }, 
+        payload => {
+          const msg = payload.new;
           if (!selectedChatUser || selectedChatUser.id !== msg.sender_id) {
             setUnreadCounts(prev => ({
               ...prev,
@@ -411,7 +415,7 @@ export default function App() {
             ...prev
           ]);
         }
-      })
+      )
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'friend_requests' }, payload => {
         if (payload.new.recipient_id === session.user.id) {
           fetchFriendRequests();
@@ -428,11 +432,10 @@ export default function App() {
     };
   }, [session, dbUsers, selectedChatUser]);
 
-  // Real-time Chat Room Subscription & Auto-clear unread badge when opening chat
+  // Real-time Chat Room Subscription & Auto-clear unread badge on chat open
   useEffect(() => {
     if (!session || !selectedChatUser) return;
 
-    // Clear unread badge instantly in real-time when chat is opened
     setUnreadCounts(prev => ({ ...prev, [selectedChatUser.id]: 0 }));
 
     const fetchMessages = async () => {
@@ -1179,7 +1182,7 @@ export default function App() {
                         </div>
                       </div>
 
-                      {/* Display unread badge ONLY when there are active unread messages */}
+                      {/* Real-time Unread Badge (shows only if count > 0) */}
                       {unreadCount > 0 && (
                         <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                           <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#3b82f6', boxShadow: '0 0 8px #3b82f6' }}></span>
