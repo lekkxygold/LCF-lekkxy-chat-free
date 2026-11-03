@@ -30,8 +30,17 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('feed');
   const [loading, setLoading] = useState(true);
 
+  // Screen Width State (Prevents direct window SSR/initialization crash)
+  const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' ? window.innerWidth < 768 : false);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   // Auth State
-  const [authMode, setAuthMode] = useState('login'); // 'login', 'signup', 'resend'
+  const [authMode, setAuthMode] = useState('login'); 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [username, setUsername] = useState('');
@@ -95,6 +104,9 @@ export default function App() {
         fetchUserProfile(session.user);
       }
       setLoading(false);
+    }).catch(err => {
+      console.log('Session fetch error:', err);
+      setLoading(false);
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -117,7 +129,7 @@ export default function App() {
     };
   }, []);
 
-  // Presence Heartbeat Tracker (Updates last_seen every 30 seconds)
+  // Presence Heartbeat Tracker
   useEffect(() => {
     if (!session) return;
 
@@ -183,7 +195,7 @@ export default function App() {
       }
 
       setCurrentUser(data);
-      setEditName(data.full_name);
+      setEditName(data.full_name || '');
       setEditBio(data.bio || '');
     } catch (e) {
       console.log('Profile fetch error:', e);
@@ -375,7 +387,7 @@ export default function App() {
     };
   }, [session, dbUsers]);
 
-  // Real-time Messaging Subscription (Instant updates without reload)
+  // Real-time Messaging Subscription
   useEffect(() => {
     if (!session || !selectedChatUser) return;
 
@@ -594,7 +606,6 @@ export default function App() {
     }
   };
 
-  // Online vs Last Seen calculation helper
   const getUserStatusText = (lastSeenString) => {
     if (!lastSeenString) return <span style={{ color: '#94a3b8' }}>Offline</span>;
     const lastSeenDate = new Date(lastSeenString);
@@ -738,7 +749,7 @@ export default function App() {
           <span style={{ fontSize: '16px', fontWeight: '700' }}>LCF Hub</span>
         </div>
 
-        <nav style={{ display: window.innerWidth < 768 ? 'none' : 'flex', gap: '4px', backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '24px', padding: '3px' }}>
+        <nav style={{ display: !isMobile ? 'flex' : 'none', gap: '4px', backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '24px', padding: '3px' }}>
           {[
             { id: 'feed', label: 'Feed', icon: <FiHome /> },
             { id: 'find', label: 'Find Friends', icon: <FiUsers /> },
@@ -775,7 +786,7 @@ export default function App() {
             style={{ backgroundColor: '#1e293b', border: '1px solid #334155', color: '#60a5fa', padding: '8px 12px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: '600' }}
             title="Download/Install App"
           >
-            <FiDownload size={14} /> <span style={{ display: window.innerWidth < 768 ? 'none' : 'inline' }}>Install App</span>
+            <FiDownload size={14} /> <span style={{ display: isMobile ? 'none' : 'inline' }}>Install App</span>
           </button>
 
           <div style={{ position: 'relative' }}>
@@ -844,10 +855,10 @@ export default function App() {
       </header>
 
       {/* FULL WIDTH MOBILE CONTAINER */}
-      <main style={{ width: '100vw', maxWidth: '800px', margin: '0 auto', padding: window.innerWidth < 768 ? '4px' : '16px', boxSizing: 'border-box' }}>
+      <main style={{ width: '100vw', maxWidth: '800px', margin: '0 auto', padding: isMobile ? '4px' : '16px', boxSizing: 'border-box' }}>
         {activeTab === 'feed' && (
           <div>
-            <div style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: window.innerWidth < 768 ? '0px' : '12px', padding: '14px', marginBottom: '16px' }}>
+            <div style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: isMobile ? '0px' : '12px', padding: '14px', marginBottom: '16px' }}>
               <div style={{ display: 'flex', gap: '10px' }}>
                 <img src={currentUser?.avatar_url} alt="avatar" style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover' }} />
                 <textarea
@@ -884,7 +895,7 @@ export default function App() {
               const comments = postCommentsMap[post.id] || [];
               const isCommentsOpen = openCommentsPostId === post.id;
               return (
-                <div key={post.id} style={{ backgroundColor: '#151c2c', border: window.innerWidth < 768 ? 'none' : '1px solid #1e293b', borderBottom: '1px solid #1e293b', borderRadius: window.innerWidth < 768 ? '0px' : '12px', padding: '16px', marginBottom: '14px' }}>
+                <div key={post.id} style={{ backgroundColor: '#151c2c', border: isMobile ? 'none' : '1px solid #1e293b', borderBottom: '1px solid #1e293b', borderRadius: isMobile ? '0px' : '12px', padding: '16px', marginBottom: '14px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
                     <img src={post.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200'} alt="u" style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover' }} />
                     <div>
@@ -1101,8 +1112,8 @@ export default function App() {
         )}
 
         {activeTab === 'chats' && (
-          <div style={{ backgroundColor: '#151c2c', border: window.innerWidth < 768 ? 'none' : '1px solid #1e293b', borderRadius: window.innerWidth < 768 ? '0px' : '14px', height: window.innerWidth < 768 ? 'calc(100vh - 140px)' : '520px', display: 'grid', gridTemplateColumns: window.innerWidth < 768 && selectedChatUser ? '1fr' : (window.innerWidth < 768 ? '1fr' : '260px 1fr'), overflow: 'hidden' }}>
-            <div style={{ borderRight: '1px solid #1e293b', backgroundColor: '#0f172a', padding: '12px', display: window.innerWidth < 768 && selectedChatUser ? 'none' : 'block' }}>
+          <div style={{ backgroundColor: '#151c2c', border: isMobile ? 'none' : '1px solid #1e293b', borderRadius: isMobile ? '0px' : '14px', height: isMobile ? 'calc(100vh - 140px)' : '520px', display: 'grid', gridTemplateColumns: isMobile && selectedChatUser ? '1fr' : (isMobile ? '1fr' : '260px 1fr'), overflow: 'hidden' }}>
+            <div style={{ borderRight: '1px solid #1e293b', backgroundColor: '#0f172a', padding: '12px', display: isMobile && selectedChatUser ? 'none' : 'block' }}>
               <h3 style={{ fontSize: '14px', fontWeight: '700', margin: '0 0 10px 0' }}>Direct Messages</h3>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', overflowY: 'auto', maxHeight: '420px' }}>
                 {dbUsers.filter(u => u.id !== session?.user?.id).map(user => (
@@ -1124,12 +1135,12 @@ export default function App() {
               </div>
             </div>
 
-            <div style={{ display: window.innerWidth < 768 && !selectedChatUser ? 'none' : 'flex', flexDirection: 'column', height: '100%' }}>
+            <div style={{ display: isMobile && !selectedChatUser ? 'none' : 'flex', flexDirection: 'column', height: '100%' }}>
               {selectedChatUser ? (
                 <>
                   <div style={{ padding: '12px 16px', borderBottom: '1px solid #1e293b', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      {window.innerWidth < 768 && (
+                      {isMobile && (
                         <button onClick={() => setSelectedChatUser(null)} style={{ background: 'none', border: 'none', color: '#60a5fa', fontSize: '12px', cursor: 'pointer', marginRight: '4px' }}>Back</button>
                       )}
                       <img src={selectedChatUser.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200'} alt="u" style={{ width: '28px', height: '28px', borderRadius: '50%', objectFit: 'cover' }} />
@@ -1210,7 +1221,7 @@ export default function App() {
         )}
 
         {activeTab === 'profile' && (
-          <div style={{ backgroundColor: '#151c2c', border: window.innerWidth < 768 ? 'none' : '1px solid #1e293b', borderRadius: window.innerWidth < 768 ? '0px' : '14px', overflow: 'hidden' }}>
+          <div style={{ backgroundColor: '#151c2c', border: isMobile ? 'none' : '1px solid #1e293b', borderRadius: isMobile ? '0px' : '14px', overflow: 'hidden' }}>
             <div style={{ height: '140px', backgroundImage: `url(${currentUser?.cover_url})`, backgroundSize: 'cover', backgroundPosition: 'center', position: 'relative' }}>
               <label style={{ position: 'absolute', bottom: '10px', right: '10px', backgroundColor: 'rgba(0,0,0,0.7)', padding: '6px 10px', borderRadius: '6px', fontSize: '11px', cursor: 'pointer', color: '#fff', display: 'flex', alignItems: 'center', gap: '4px' }}>
                 <FiCamera /> Change Cover Photo
