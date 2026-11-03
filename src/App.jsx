@@ -90,12 +90,13 @@ export default function App() {
   const [newReelTitle, setNewReelTitle] = useState('');
   const [newReelUrl, setNewReelUrl] = useState('');
 
-  // Messaging State
+  // Messaging State & Unread Counts Map
   const [selectedChatUser, setSelectedChatUser] = useState(null);
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
   const [chatPhotoBase64, setChatPhotoBase64] = useState(null);
   const [likedPosts, setLikedPosts] = useState({});
+  const [unreadCounts, setUnreadCounts] = useState({});
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -155,8 +156,31 @@ export default function App() {
       fetchAllRegisteredUsers();
       fetchPosts();
       fetchFriendRequests();
+      fetchUnreadMessageCounts();
     }
   }, [session]);
+
+  const fetchUnreadMessageCounts = async () => {
+    if (!session) return;
+    try {
+      const { data, error } = await supabase
+        .from('messages')
+        .select('sender_id')
+        .eq('recipient_id', session.user.id);
+
+      if (!error && data) {
+        const counts = {};
+        data.forEach(m => {
+          if (!selectedChatUser || selectedChatUser.id !== m.sender_id) {
+            counts[m.sender_id] = (counts[m.sender_id] || 0) + 1;
+          }
+        });
+        setUnreadCounts(counts);
+      }
+    } catch (e) {
+      console.log('Unread count fetch error:', e);
+    }
+  };
 
   const handleInstallClick = async () => {
     if (installPromptEvent) {
@@ -306,7 +330,6 @@ export default function App() {
         setFriendCount(sent.length);
       }
 
-      // FIXED: Properly maps accepted status whether current user was sender or recipient
       const { data: allUserRequests } = await supabase
         .from('friend_requests')
         .select('*')
@@ -372,7 +395,11 @@ export default function App() {
       .channel('public:notifications_stream')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, payload => {
         if (payload.new.recipient_id === session.user.id) {
-          const sender = dbUsers.find(u => u.id === payload.new.sender_id) || { full_name: 'Someone' };
+          const senderId = payload.new.sender_id;
+          if (!selectedChatUser || selectedChatUser.id !== senderId) {
+            setUnreadCounts(prev => ({ ...prev, [senderId]: (prev[senderId] || 0) + 1 }));
+          }
+          const sender = dbUsers.find(u => u.id === senderId) || { full_name: 'Someone' };
           setNotifications(prev => [
             { id: Date.now(), text: `New message from ${sender.full_name || 'Someone'}`, time: 'Just now', type: 'message' },
             ...prev
@@ -393,11 +420,13 @@ export default function App() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [session, dbUsers]);
+  }, [session, dbUsers, selectedChatUser]);
 
-  // Real-time Messaging Subscription
+  // Real-time Messaging Subscription & Auto-clear unread badge on chat open
   useEffect(() => {
     if (!session || !selectedChatUser) return;
+
+    setUnreadCounts(prev => ({ ...prev, [selectedChatUser.id]: 0 }));
 
     const fetchMessages = async () => {
       const { data, error } = await supabase
@@ -1124,22 +1153,37 @@ export default function App() {
             <div style={{ borderRight: '1px solid #1e293b', backgroundColor: '#0f172a', padding: '12px', display: isMobile && selectedChatUser ? 'none' : 'block' }}>
               <h3 style={{ fontSize: '14px', fontWeight: '700', margin: '0 0 10px 0' }}>Direct Messages</h3>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', overflowY: 'auto', maxHeight: '420px' }}>
-                {dbUsers.filter(u => u.id !== session?.user?.id).map(user => (
-                  <div
-                    key={user.id}
-                    onClick={() => setSelectedChatUser(user)}
-                    style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px', borderRadius: '8px', backgroundColor: selectedChatUser?.id === user.id ? '#1e293b' : 'transparent', cursor: 'pointer' }}
-                  >
-                    <img src={user.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200'} alt="u" style={{ width: '32px', height: '32px', borderRadius: '50%', objectFit: 'cover' }} />
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: '12px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '3px' }}>
-                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.full_name}</span>
-                        {user.verified && <FiCheckCircle size={10} color="#3b82f6" />}
+                {dbUsers.filter(u => u.id !== session?.user?.id).map(user => {
+                  const unreadCount = unreadCounts[user.id] || 0;
+                  return (
+                    <div
+                      key={user.id}
+                      onClick={() => setSelectedChatUser(user)}
+                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', padding: '8px', borderRadius: '8px', backgroundColor: selectedChatUser?.id === user.id ? '#1e293b' : 'transparent', cursor: 'pointer' }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
+                        <img src={user.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200'} alt="u" style={{ width: '32px', height: '32px', borderRadius: '50%', objectFit: 'cover' }} />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: '12px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.full_name}</span>
+                            {user.verified && <FiCheckCircle size={10} color="#3b82f6" />}
+                          </div>
+                          <div style={{ fontSize: '10px' }}>{getUserStatusText(user.last_seen)}</div>
+                        </div>
                       </div>
-                      <div style={{ fontSize: '10px' }}>{getUserStatusText(user.last_seen)}</div>
+
+                      {/* Custom LCF Glowing Unread Badge */}
+                      {unreadCount > 0 && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#3b82f6', boxShadow: '0 0 8px #3b82f6' }}></span>
+                          <span style={{ backgroundColor: '#2563eb', color: '#fff', fontSize: '10px', fontWeight: 'bold', minWidth: '18px', height: '18px', borderRadius: '9px', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 5px', boxShadow: '0 2px 6px rgba(37,99,235,0.4)' }}>
+                            {unreadCount}
+                          </span>
+                        </div>
+                      )}
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
 
