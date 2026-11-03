@@ -1,16 +1,16 @@
-// LCF Social Hub Service Worker
-const CACHE_NAME = 'lcf-hub-v1';
-const assetsToCache = [
+// LCF Social Hub Service Worker - v2
+const CACHE_NAME = 'lcf-hub-cache-v2';
+
+const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
-  '/src/main.jsx',
-  '/src/App.jsx'
+  '/manifest.json'
 ];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(assetsToCache);
+      return cache.addAll(ASSETS_TO_CACHE);
     })
   );
   self.skipWaiting();
@@ -28,16 +28,13 @@ self.addEventListener('activate', (event) => {
       );
     })
   );
-  self.self.clientsClaim();
+  self.clients.claim();
 });
 
 self.addEventListener('fetch', (event) => {
   event.respondWith(
-    caches.match(event.request).then((response) => {
-      return response || fetch(event.request);
-    }).catch(() => {
-      // Fallback if offline
-      return caches.match('/');
+    caches.match(event.request).then((cachedResponse) => {
+      return cachedResponse || fetch(event.request);
     })
   );
 });
