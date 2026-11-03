@@ -678,7 +678,7 @@ export default function App() {
   }
 
   return (
-    <div style={{ backgroundColor: '#0b0f17', color: '#f8fafc', minHeight: '100vh', width: '100vw', boxSizing: 'border-box', paddingBottom: '80px', fontFamily: 'Inter, system-ui, sans-serif', overflowX: 'hidden' }}>
+    <div style={{ backgroundColor: '#0b0f17', color: '#f8fafc', minHeight: '100vh', width: '100vw', maxWidth: '100vw', margin: 0, padding: 0, boxSizing: 'border-box', paddingBottom: '80px', fontFamily: 'Inter, system-ui, sans-serif', overflowX: 'hidden', position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, overflowY: 'auto' }}>
       <header style={{ position: 'sticky', top: 0, zIndex: 100, backgroundColor: 'rgba(15, 23, 42, 0.95)', backdropFilter: 'blur(10px)', borderBottom: '1px solid #1e293b', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100vw', boxSizing: 'border-box' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'linear-gradient(135deg, #2563eb, #1d4ed8)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 'bold', fontSize: '12px' }}>
