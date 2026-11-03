@@ -117,6 +117,27 @@ export default function App() {
     };
   }, []);
 
+  // Presence Heartbeat Tracker (Updates last_seen every 30 seconds)
+  useEffect(() => {
+    if (!session) return;
+
+    const updatePresence = async () => {
+      try {
+        await supabase
+          .from('profiles')
+          .update({ last_seen: new Date().toISOString() })
+          .eq('id', session.user.id);
+      } catch (err) {
+        console.log('Presence update error:', err);
+      }
+    };
+
+    updatePresence();
+    const interval = setInterval(updatePresence, 30000);
+
+    return () => clearInterval(interval);
+  }, [session]);
+
   useEffect(() => {
     if (session) {
       fetchAllRegisteredUsers();
@@ -155,7 +176,8 @@ export default function App() {
           bio: isVerifiedSpecial ? 'Verified Official LCF Pioneer Account.' : 'LCF Community Member.',
           avatar_url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200',
           cover_url: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&q=80&w=1000',
-          verified: isVerifiedSpecial
+          verified: isVerifiedSpecial,
+          last_seen: new Date().toISOString()
         };
         await supabase.from('profiles').upsert([data]);
       }
@@ -322,6 +344,7 @@ export default function App() {
     }
   };
 
+  // Real-time notifications and database subscriptions
   useEffect(() => {
     if (!session) return;
 
@@ -352,6 +375,7 @@ export default function App() {
     };
   }, [session, dbUsers]);
 
+  // Real-time Messaging Subscription (Instant updates without reload)
   useEffect(() => {
     if (!session || !selectedChatUser) return;
 
@@ -370,19 +394,27 @@ export default function App() {
     fetchMessages();
 
     const chatChannel = supabase
-      .channel(`chat_${session.user.id}_${selectedChatUser.id}`)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, payload => {
-        const msg = payload.new;
-        if (
-          (msg.sender_id === session.user.id && msg.recipient_id === selectedChatUser.id) ||
-          (msg.sender_id === selectedChatUser.id && msg.recipient_id === session.user.id)
-        ) {
-          setMessages(prev => {
-            if (prev.some(m => m.id === msg.id)) return prev;
-            return [...prev, msg];
-          });
+      .channel(`chat_room_${session.user.id}_${selectedChatUser.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'messages'
+        },
+        (payload) => {
+          const msg = payload.new;
+          if (
+            (msg.sender_id === session.user.id && msg.recipient_id === selectedChatUser.id) ||
+            (msg.sender_id === selectedChatUser.id && msg.recipient_id === session.user.id)
+          ) {
+            setMessages((prev) => {
+              if (prev.some((m) => m.id === msg.id)) return prev;
+              return [...prev, msg];
+            });
+          }
         }
-      })
+      )
       .subscribe();
 
     return () => {
@@ -415,7 +447,8 @@ export default function App() {
             bio: isVerifiedSpecial ? 'Verified Official LCF Pioneer Account.' : 'LCF Member',
             avatar_url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200',
             cover_url: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&q=80&w=1000',
-            verified: isVerifiedSpecial
+            verified: isVerifiedSpecial,
+            last_seen: new Date().toISOString()
           }]);
         }
 
@@ -558,6 +591,24 @@ export default function App() {
     } catch (err) {
       console.log('Message send error:', err);
       alert('Failed to send message: ' + err.message);
+    }
+  };
+
+  // Online vs Last Seen calculation helper
+  const getUserStatusText = (lastSeenString) => {
+    if (!lastSeenString) return <span style={{ color: '#94a3b8' }}>Offline</span>;
+    const lastSeenDate = new Date(lastSeenString);
+    const diffMinutes = Math.floor((new Date() - lastSeenDate) / 60000);
+
+    if (diffMinutes < 2) {
+      return <span style={{ color: '#22c55e' }}>● Online</span>;
+    } else if (diffMinutes < 60) {
+      return <span style={{ color: '#94a3b8' }}>Last seen {diffMinutes}m ago</span>;
+    } else if (diffMinutes < 1440) {
+      const hours = Math.floor(diffMinutes / 60);
+      return <span style={{ color: '#94a3b8' }}>Last seen {hours}h ago</span>;
+    } else {
+      return <span style={{ color: '#94a3b8' }}>Offline</span>;
     }
   };
 
@@ -1061,12 +1112,12 @@ export default function App() {
                     style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px', borderRadius: '8px', backgroundColor: selectedChatUser?.id === user.id ? '#1e293b' : 'transparent', cursor: 'pointer' }}
                   >
                     <img src={user.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200'} alt="u" style={{ width: '32px', height: '32px', borderRadius: '50%', objectFit: 'cover' }} />
-                    <div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: '12px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '3px' }}>
-                        {user.full_name}
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.full_name}</span>
                         {user.verified && <FiCheckCircle size={10} color="#3b82f6" />}
                       </div>
-                      <div style={{ fontSize: '10px', color: '#94a3b8' }}>@{user.username}</div>
+                      <div style={{ fontSize: '10px' }}>{getUserStatusText(user.last_seen)}</div>
                     </div>
                   </div>
                 ))}
@@ -1087,7 +1138,7 @@ export default function App() {
                           {selectedChatUser.full_name}
                           {selectedChatUser.verified && <FiCheckCircle size={11} color="#3b82f6" />}
                         </div>
-                        <div style={{ fontSize: '10px', color: '#22c55e' }}>Active</div>
+                        <div style={{ fontSize: '10px' }}>{getUserStatusText(selectedChatUser.last_seen)}</div>
                       </div>
                     </div>
                   </div>
