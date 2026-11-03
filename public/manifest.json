@@ -4,7 +4,7 @@
   "icons": [
     {
       "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect width='512' height='512' rx='128' fill='%232563eb'/><text x='50%' y='62%' font-family='Arial, sans-serif' font-weight='bold' font-size='220' fill='white' text-anchor='middle'>LCF</text></svg>",
-      "sizes": "192x192 512x512 512x512",
+      "sizes": "72x72 96x96 128x128 144x144 152x152 192x192 384x384 512x512",
       "type": "image/svg+xml",
       "purpose": "any maskable"
     }
