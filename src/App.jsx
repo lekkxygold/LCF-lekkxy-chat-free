@@ -306,14 +306,22 @@ export default function App() {
         setFriendCount(sent.length);
       }
 
-      const { data: allSent } = await supabase
+      // FIXED: Properly maps accepted status whether current user was sender or recipient
+      const { data: allUserRequests } = await supabase
         .from('friend_requests')
         .select('*')
-        .eq('sender_id', session.user.id);
+        .or(`sender_id.eq.${session.user.id},recipient_id.eq.${session.user.id}`);
 
-      if (allSent) {
+      if (allUserRequests) {
         const map = {};
-        allSent.forEach(r => { map[r.recipient_id] = r.status; });
+        allUserRequests.forEach(r => {
+          const otherId = r.sender_id === session.user.id ? r.recipient_id : r.sender_id;
+          if (r.status === 'accepted') {
+            map[otherId] = 'accepted';
+          } else if (r.sender_id === session.user.id) {
+            map[otherId] = r.status;
+          }
+        });
         setSentRequestMap(map);
       }
     } catch (e) {
