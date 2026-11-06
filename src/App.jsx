@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 import {
   FiHome,
@@ -25,8 +25,12 @@ import {
   FiDownload,
   FiMic,
   FiPlay,
-  FiSquare,
-  FiPlus
+  FiPlus,
+  FiGift,
+  FiShare2,
+  FiCreditCard,
+  FiCheck,
+  FiCopy
 } from 'react-icons/fi';
 
 export default function App() {
@@ -34,7 +38,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('home');
   const [loading, setLoading] = useState(true);
 
-  // Screen Width State (Responsive Check)
+  // Screen Width State
   const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' ? window.innerWidth < 768 : false);
 
   useEffect(() => {
@@ -57,14 +61,22 @@ export default function App() {
   const [installPromptEvent, setInstallPromptEvent] = useState(null);
   const [showInstallModal, setShowInstallModal] = useState(false);
 
-  // User Profile State
+  // User Profile & LCF Points Economy State
   const [currentUser, setCurrentUser] = useState(null);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [editName, setEditName] = useState('');
   const [editBio, setEditBio] = useState('');
   const [savingProfile, setSavingProfile] = useState(false);
+  
+  // Points Economy
+  const [lcfPoints, setLcfPoints] = useState(0);
+  const [lastClaimDate, setLastClaimDate] = useState(null);
+  const [copiedLink, setCopiedLink] = useState(false);
+  const [showWithdrawModal, setShowWithdrawModal] = useState(false);
+  const [withdrawAmountPoints, setWithdrawAmountPoints] = useState(2000);
+  const [payoutDetails, setPayoutDetails] = useState('');
 
-  // Registered Users & Directory State
+  // Registered Users Directory State
   const [dbUsers, setDbUsers] = useState([]);
   const [userSearchQuery, setUserSearchQuery] = useState('');
 
@@ -72,8 +84,6 @@ export default function App() {
   const [incomingRequests, setIncomingRequests] = useState([]);
   const [sentRequestMap, setSentRequestMap] = useState({});
   const [friendCount, setFriendCount] = useState(0);
-  const [followersCount, setFollowersCount] = useState(1);
-  const [followingCount, setFollowingCount] = useState(1);
 
   // Posts & Comments State
   const [posts, setPosts] = useState([]);
@@ -90,7 +100,7 @@ export default function App() {
 
   // Reels State
   const [reels, setReels] = useState([
-    { id: '1', title: 'The wise tortoise animation', user: 'lekkxygold', views: '3.4k', url: 'https://images.unsplash.com/photo-1534567153574-2b12153a87f0?auto=format&fit=crop&q=80&w=400' },
+    { id: '1', title: 'Street-pop beat breakdown & lyrics', user: 'lekkxygold', views: '3.4k', url: 'https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&q=80&w=400' },
     { id: '2', title: 'Commercial Lounge Architecture', user: 'gene_foster', views: '1.9k', url: 'https://images.unsplash.com/photo-1554118811-1e0d58224f24?auto=format&fit=crop&q=80&w=400' }
   ]);
   const [isCreatingReel, setIsCreatingReel] = useState(false);
@@ -99,21 +109,20 @@ export default function App() {
 
   // Groups State
   const [groups, setGroups] = useState([
-    { id: '1', name: 'Verified members', description: 'Good evening members, welcome to LCF official lounge.', membersCount: 14 }
+    { id: '1', name: 'Verified Members Lounge', description: 'Good evening members, welcome to LCF official lounge.', membersCount: 14 }
   ]);
   const [selectedGroup, setSelectedGroup] = useState(null);
   const [groupMessages, setGroupMessages] = useState([
-    { id: '1', user: 'Olalekan Oluwole', text: 'Good evening members, welcome to LCF official lounge.', time: '7:00 PM' }
+    { id: '1', user: 'Olalekan Oluwole', text: 'Welcome to the official LCF Hub lounge!', time: '7:00 PM' }
   ]);
   const [newGroupMsg, setNewGroupMsg] = useState('');
 
-  // Messaging State & Unread Counts
+  // Messaging State & Unread Counts Map
   const [selectedChatUser, setSelectedChatUser] = useState(null);
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
   const [chatPhotoBase64, setChatPhotoBase64] = useState(null);
   const [unreadCounts, setUnreadCounts] = useState({});
-  const [isRecordingVoice, setIsRecordingVoice] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -230,17 +239,76 @@ export default function App() {
           avatar_url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200',
           cover_url: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&q=80&w=1000',
           verified: isVerifiedSpecial,
+          lcf_points: 5,
+          last_claim_date: new Date().toISOString(),
           last_seen: new Date().toISOString()
         };
         await supabase.from('profiles').upsert([data]);
       }
 
       setCurrentUser(data);
+      setLcfPoints(data.lcf_points || 0);
+      setLastClaimDate(data.last_claim_date || null);
       setEditName(data.full_name || '');
       setEditBio(data.bio || '');
     } catch (e) {
       console.log('Profile fetch error:', e);
     }
+  };
+
+  // Claim Daily Sign-In Bonus (+5 Points)
+  const handleClaimDailyBonus = async () => {
+    if (!session || !currentUser) return;
+    const now = new Date();
+    if (lastClaimDate) {
+      const lastClaim = new Date(lastClaimDate);
+      const hoursDiff = Math.abs(now - lastClaim) / 36e5;
+      if (hoursDiff < 24) {
+        alert("You have already claimed your daily 5 LCF points today! Check back in 24 hours.");
+        return;
+      }
+    }
+
+    const updatedPoints = lcfPoints + 5;
+    const todayIso = now.toISOString();
+
+    setLcfPoints(updatedPoints);
+    setLastClaimDate(todayIso);
+
+    try {
+      await supabase
+        .from('profiles')
+        .update({ lcf_points: updatedPoints, last_claim_date: todayIso })
+        .eq('id', session.user.id);
+      
+      alert("🎉 Daily Bonus Claimed! You earned +5 LCF Points.");
+    } catch (err) {
+      console.log('Claim bonus error:', err);
+    }
+  };
+
+  // Copy Referral Invite Link (+20 Points per invite)
+  const handleCopyReferralLink = () => {
+    const inviteLink = `${window.location.origin}/join?ref=${currentUser?.username || 'user'}`;
+    navigator.clipboard.writeText(inviteLink);
+    setCopiedLink(true);
+    setTimeout(() => setCopiedLink(false), 3000);
+    alert(`Invite link copied to clipboard!\nShare this link to earn +20 LCF Points (₦10) for every friend who signs up.`);
+  };
+
+  const handleRequestWithdrawal = (e) => {
+    e.preventDefault();
+    if (withdrawAmountPoints < 2000) {
+      alert("Minimum withdrawal is 2,000 LCF Points (₦1,000 Naira).");
+      return;
+    }
+    if (withdrawAmountPoints > lcfPoints) {
+      alert("Insufficient LCF Points balance.");
+      return;
+    }
+    const nairaValue = (withdrawAmountPoints / 2000) * 1000;
+    alert(`Withdrawal request of ${withdrawAmountPoints} LCF Points (₦${nairaValue.toLocaleString()} Naira) submitted to ${payoutDetails}! Processing timeframe: 24h.`);
+    setShowWithdrawModal(false);
   };
 
   const fetchAllRegisteredUsers = async (query = '') => {
@@ -404,7 +472,7 @@ export default function App() {
     }
   };
 
-  // Real-time unread counter & subscriptions
+  // Real-time notifications and real-time unread counter subscription
   useEffect(() => {
     if (!session) return;
 
@@ -524,6 +592,8 @@ export default function App() {
             avatar_url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200',
             cover_url: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&q=80&w=1000',
             verified: isVerifiedSpecial,
+            lcf_points: 5,
+            last_claim_date: new Date().toISOString(),
             last_seen: new Date().toISOString()
           }]);
         }
@@ -722,7 +792,7 @@ export default function App() {
         <div style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '16px', padding: '32px', width: '100%', maxWidth: '400px', boxSizing: 'border-box' }}>
           <div style={{ textAlign: 'center', marginBottom: '24px' }}>
             <h1 style={{ fontSize: '22px', fontWeight: '700', color: '#fff', margin: '0 0 6px' }}>LCF Social Hub</h1>
-            <p style={{ fontSize: '13px', color: '#94a3b8', margin: 0 }}>Secure and Private Chat</p>
+            <p style={{ fontSize: '13px', color: '#94a3b8', margin: 0 }}>Earn 5 Points Daily • Earn 20 Points per Friend</p>
           </div>
 
           {authSuccess && (
@@ -776,7 +846,7 @@ export default function App() {
                 style={{ width: '100%', padding: '12px', backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
               />
               <button type="submit" style={{ padding: '12px', backgroundColor: '#2563eb', border: 'none', borderRadius: '8px', color: '#fff', fontWeight: '600', fontSize: '13px', cursor: 'pointer', marginTop: '6px' }}>
-                {authMode === 'login' ? 'Sign In' : 'Create Account'}
+                {authMode === 'login' ? 'Sign In' : 'Create Account (+5 Free Bonus Points)'}
               </button>
             </form>
           )}
@@ -829,9 +899,16 @@ export default function App() {
             LCF
           </div>
           <div>
-            <span style={{ fontSize: '15px', fontWeight: '700', display: 'block' }}>LCF</span>
+            <span style={{ fontSize: '15px', fontWeight: '700', display: 'block' }}>LCF Hub</span>
             <span style={{ fontSize: '10px', color: '#94a3b8' }}>Lekxxy Chat Free</span>
           </div>
+        </div>
+
+        {/* LCF POINTS WALLET BADGE */}
+        <div onClick={() => setActiveTab('wallet')} style={{ backgroundColor: '#1e293b', border: '1px solid #3b82f6', borderRadius: '20px', padding: '4px 12px', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+          <FiGift color="#eab308" size={14} />
+          <span style={{ fontSize: '12px', fontWeight: '700', color: '#eab308' }}>{lcfPoints} PTS</span>
+          <span style={{ fontSize: '10px', color: '#94a3b8' }}>(₦{((lcfPoints / 2000) * 1000).toLocaleString()})</span>
         </div>
 
         <nav style={{ display: !isMobile ? 'flex' : 'none', gap: '4px', backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '24px', padding: '3px' }}>
@@ -841,7 +918,7 @@ export default function App() {
             { id: 'reels', label: 'Reels', icon: <FiVideo /> },
             { id: 'chats', label: 'Chats', icon: <FiMessageSquare /> },
             { id: 'friends', label: 'Friends', icon: <FiUsers /> },
-            { id: 'groups', label: 'Groups', icon: <FiUsers /> },
+            { id: 'wallet', label: 'Wallet', icon: <FiGift /> },
             { id: 'profile', label: 'Profile', icon: <FiUser /> }
           ].map(tab => (
             <button
@@ -949,43 +1026,127 @@ export default function App() {
           <div>
             <div style={{ marginBottom: '20px' }}>
               <div style={{ fontSize: '12px', color: '#94a3b8' }}>Welcome back</div>
-              <h2 style={{ fontSize: '20px', fontWeight: '700', margin: '2px 0 6px 0' }}>Hey, {currentUser?.full_name || 'Olalekan'}</h2>
-              <p style={{ fontSize: '13px', color: '#60a5fa', margin: 0 }}>Connect. Chat. Stay Connected.</p>
+              <h2 style={{ fontSize: '20px', fontWeight: '700', margin: '2px 0 6px 0' }}>Hey, {currentUser?.full_name || 'lekkxygold'} 👋</h2>
+              <p style={{ fontSize: '13px', color: '#60a5fa', margin: 0 }}>Connect. Chat. Earn LCF Rewards.</p>
             </div>
 
+            {/* DAILY REWARD CLAIM BANNER */}
+            <div style={{ background: 'linear-gradient(135deg, #1e3a8a, #1d4ed8)', border: '1px solid #3b82f6', borderRadius: '14px', padding: '18px', marginBottom: '20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#eab308', fontWeight: 'bold', fontSize: '14px', marginBottom: '4px' }}>
+                  <FiGift /> Daily Login Reward
+                </div>
+                <p style={{ fontSize: '12px', color: '#e2e8f0', margin: 0 }}>
+                  Claim your free <b>+5 LCF Points</b> every day just for logging in!
+                </p>
+              </div>
+              <button
+                onClick={handleClaimDailyBonus}
+                style={{ padding: '10px 18px', backgroundColor: '#eab308', border: 'none', borderRadius: '8px', color: '#0f172a', fontWeight: '700', fontSize: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+              >
+                <FiCheckCircle /> Claim 5 Points
+              </button>
+            </div>
+
+            {/* QUICK ACTIONS GRID */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px' }}>
-              <div onClick={() => setActiveTab('friends')} style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '12px', padding: '16px', cursor: 'pointer' }}>
-                <div style={{ color: '#3b82f6', marginBottom: '10px' }}><FiUsers size={22} /></div>
-                <h3 style={{ fontSize: '15px', fontWeight: '600', margin: '0 0 4px 0' }}>Find people</h3>
-                <p style={{ fontSize: '12px', color: '#94a3b8', margin: 0 }}>Search by name or username</p>
+              <div onClick={() => setActiveTab('wallet')} style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '12px', padding: '16px', cursor: 'pointer' }}>
+                <div style={{ color: '#eab308', marginBottom: '10px' }}><FiGift size={22} /></div>
+                <h3 style={{ fontSize: '15px', fontWeight: '600', margin: '0 0 4px 0' }}>LCF Wallet</h3>
+                <p style={{ fontSize: '12px', color: '#94a3b8', margin: 0 }}>{lcfPoints} PTS (₦{((lcfPoints / 2000) * 1000).toLocaleString()})</p>
               </div>
 
-              <div onClick={() => setActiveTab('profile')} style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '12px', padding: '16px', cursor: 'pointer' }}>
-                <div style={{ color: '#3b82f6', marginBottom: '10px' }}><FiUser size={22} /></div>
-                <h3 style={{ fontSize: '15px', fontWeight: '600', margin: '0 0 4px 0' }}>Your profile</h3>
-                <p style={{ fontSize: '12px', color: '#94a3b8', margin: 0 }}>Edit your details</p>
+              <div onClick={handleCopyReferralLink} style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '12px', padding: '16px', cursor: 'pointer' }}>
+                <div style={{ color: '#3b82f6', marginBottom: '10px' }}><FiShare2 size={22} /></div>
+                <h3 style={{ fontSize: '15px', fontWeight: '600', margin: '0 0 4px 0' }}>Invite & Earn</h3>
+                <p style={{ fontSize: '12px', color: '#94a3b8', margin: 0 }}>+20 Points per invite (₦10)</p>
               </div>
 
               <div onClick={() => setActiveTab('chats')} style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '12px', padding: '16px', cursor: 'pointer' }}>
                 <div style={{ color: '#3b82f6', marginBottom: '10px' }}><FiMessageSquare size={22} /></div>
                 <h3 style={{ fontSize: '15px', fontWeight: '600', margin: '0 0 4px 0' }}>Chats</h3>
-                <p style={{ fontSize: '12px', color: '#94a3b8', margin: 0 }}>Your private conversations</p>
+                <p style={{ fontSize: '12px', color: '#94a3b8', margin: 0 }}>Real-time private messaging</p>
               </div>
 
-              <div onClick={() => setActiveTab('groups')} style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '12px', padding: '16px', cursor: 'pointer' }}>
+              <div onClick={() => setActiveTab('friends')} style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '12px', padding: '16px', cursor: 'pointer' }}>
                 <div style={{ color: '#3b82f6', marginBottom: '10px' }}><FiUsers size={22} /></div>
-                <h3 style={{ fontSize: '15px', fontWeight: '600', margin: '0 0 4px 0' }}>Groups</h3>
-                <p style={{ fontSize: '12px', color: '#94a3b8', margin: 0 }}>Chat with several people at once</p>
+                <h3 style={{ fontSize: '15px', fontWeight: '600', margin: '0 0 4px 0' }}>Find Friends</h3>
+                <p style={{ fontSize: '12px', color: '#94a3b8', margin: 0 }}>Search community directory</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* LCF WALLET & REWARDS TAB */}
+        {activeTab === 'wallet' && (
+          <div>
+            <div style={{ marginBottom: '18px' }}>
+              <h2 style={{ fontSize: '18px', fontWeight: '700', margin: '0 0 4px 0' }}>LCF Points Wallet</h2>
+              <p style={{ fontSize: '12px', color: '#94a3b8', margin: 0 }}>Earn points daily and convert them into Naira payouts.</p>
+            </div>
+
+            {/* WALLET BALANCE CARD */}
+            <div style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '16px', padding: '24px', marginBottom: '20px', textAlign: 'center' }}>
+              <div style={{ fontSize: '12px', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '6px' }}>Total Earned Balance</div>
+              <div style={{ fontSize: '36px', fontWeight: '800', color: '#eab308', marginBottom: '4px' }}>{lcfPoints} <span style={{ fontSize: '18px' }}>PTS</span></div>
+              <div style={{ fontSize: '16px', color: '#22c55e', fontWeight: '600', marginBottom: '20px' }}>
+                ≈ ₦{((lcfPoints / 2000) * 1000).toLocaleString()} Naira
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+                <button
+                  onClick={handleClaimDailyBonus}
+                  style={{ padding: '10px 16px', backgroundColor: '#2563eb', border: 'none', borderRadius: '8px', color: '#fff', fontSize: '12px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+                >
+                  <FiGift /> Claim Daily +5 PTS
+                </button>
+                <button
+                  onClick={() => setShowWithdrawModal(true)}
+                  style={{ padding: '10px 16px', backgroundColor: '#22c55e', border: 'none', borderRadius: '8px', color: '#fff', fontSize: '12px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+                >
+                  <FiCreditCard /> Withdraw Payout
+                </button>
               </div>
             </div>
 
-            <div style={{ marginTop: '24px', backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '12px', padding: '16px' }}>
-              <h3 style={{ fontSize: '14px', fontWeight: '700', margin: '0 0 10px 0' }}>Build progress</h3>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '12px', color: '#94a3b8' }}>
-                <div>🟢 Profiles, auth & search</div>
-                <div>🟢 Followers, friends & privacy</div>
-                <div>🟢 Real-time private messaging</div>
-                <div>🟢 Groups, notifications & support</div>
+            {/* EARNING RULES CARD */}
+            <div style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '14px', padding: '18px', marginBottom: '20px' }}>
+              <h3 style={{ fontSize: '14px', fontWeight: '700', margin: '0 0 12px 0', color: '#60a5fa' }}>⚡ Points & Earnings Conversion Table</h3>
+              
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '12px', color: '#cbd5e1' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', backgroundColor: '#0f172a', borderRadius: '8px' }}>
+                  <span>🎁 Daily Sign-In Bonus</span>
+                  <span style={{ color: '#eab308', fontWeight: '700' }}>+5 Points / day</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', backgroundColor: '#0f172a', borderRadius: '8px' }}>
+                  <span>🤝 Friend Invitation Bonus</span>
+                  <span style={{ color: '#eab308', fontWeight: '700' }}>+20 Points / invite</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', backgroundColor: '#0f172a', borderRadius: '8px' }}>
+                  <span>🔂 Conversion Rate</span>
+                  <span style={{ color: '#22c55e', fontWeight: '700' }}>2,000 Points = ₦1,000 Naira</span>
+                </div>
+              </div>
+            </div>
+
+            {/* REFERRAL INVITE CARD */}
+            <div style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '14px', padding: '18px' }}>
+              <h3 style={{ fontSize: '14px', fontWeight: '700', margin: '0 0 6px 0', color: '#fff' }}>Invite Friends & Earn +20 Points</h3>
+              <p style={{ fontSize: '12px', color: '#94a3b8', margin: '0 0 14px 0' }}>Share your unique referral link to earn 20 LCF points for every new user who registers.</p>
+              
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <input
+                  type="text"
+                  readOnly
+                  value={`${window.location.origin}/join?ref=${currentUser?.username || 'user'}`}
+                  style={{ flex: 1, padding: '10px', backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', color: '#94a3b8', fontSize: '11px', outline: 'none' }}
+                />
+                <button
+                  onClick={handleCopyReferralLink}
+                  style={{ padding: '10px 16px', backgroundColor: copiedLink ? '#22c55e' : '#2563eb', border: 'none', borderRadius: '8px', color: '#fff', fontSize: '12px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+                >
+                  {copiedLink ? <FiCheck /> : <FiCopy />} {copiedLink ? 'Copied!' : 'Copy Link'}
+                </button>
               </div>
             </div>
           </div>
@@ -1001,7 +1162,7 @@ export default function App() {
                   rows={2}
                   value={newPostText}
                   onChange={(e) => setNewPostText(e.target.value)}
-                  placeholder="What's on your mind?"
+                  placeholder="What's on your mind? Share to LCF..."
                   style={{ width: '100%', backgroundColor: 'transparent', border: 'none', color: '#fff', fontSize: '13px', outline: 'none', resize: 'none' }}
                 />
               </div>
@@ -1032,16 +1193,14 @@ export default function App() {
               const isCommentsOpen = openCommentsPostId === post.id;
               return (
                 <div key={post.id} style={{ backgroundColor: '#151c2c', border: isMobile ? 'none' : '1px solid #1e293b', borderBottom: '1px solid #1e293b', borderRadius: isMobile ? '0px' : '12px', padding: '16px', marginBottom: '14px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'between', marginBottom: '10px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
-                      <img src={post.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200'} alt="u" style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover' }} />
-                      <div>
-                        <div style={{ fontSize: '13px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                          {post.user_name}
-                          {post.verified && <FiCheckCircle size={13} color="#3b82f6" title="Verified" />}
-                        </div>
-                        <div style={{ fontSize: '10px', color: '#94a3b8' }}>a month ago</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+                    <img src={post.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200'} alt="u" style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover' }} />
+                    <div>
+                      <div style={{ fontSize: '13px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        {post.user_name}
+                        {post.verified && <FiCheckCircle size={13} color="#3b82f6" title="Verified" />}
                       </div>
+                      <div style={{ fontSize: '11px', color: '#94a3b8' }}>@{post.username}</div>
                     </div>
                   </div>
 
@@ -1153,7 +1312,7 @@ export default function App() {
             <div style={{ borderRight: '1px solid #1e293b', backgroundColor: '#0f172a', padding: '12px', display: isMobile && selectedChatUser ? 'none' : 'block' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
                 <h3 style={{ fontSize: '14px', fontWeight: '700', margin: 0 }}>Chats</h3>
-                <span style={{ fontSize: '11px', color: '#94a3b8' }}>Your private conversations.</span>
+                <span style={{ fontSize: '11px', color: '#94a3b8' }}>Private conversations</span>
               </div>
               
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', overflowY: 'auto', maxHeight: '440px' }}>
@@ -1326,7 +1485,7 @@ export default function App() {
             )}
 
             <div style={{ marginBottom: '16px' }}>
-              <h2 style={{ fontSize: '16px', fontWeight: '700', margin: '0 0 4px 0' }}>Find Friends & Registered Members</h2>
+              <h2 style={{ fontSize: '16px', fontWeight: '700', margin: '0 0 4px 0' }}>Find Friends & Members</h2>
               <p style={{ fontSize: '12px', color: '#94a3b8', margin: 0 }}>Search registered members in the live database.</p>
             </div>
 
@@ -1394,79 +1553,6 @@ export default function App() {
           </div>
         )}
 
-        {/* GROUPS TAB */}
-        {activeTab === 'groups' && (
-          <div style={{ backgroundColor: '#151c2c', border: isMobile ? 'none' : '1px solid #1e293b', borderRadius: isMobile ? '0px' : '14px', height: isMobile ? 'calc(100vh - 150px)' : '520px', display: 'grid', gridTemplateColumns: isMobile && selectedGroup ? '1fr' : (isMobile ? '1fr' : '260px 1fr'), overflow: 'hidden' }}>
-            <div style={{ borderRight: '1px solid #1e293b', backgroundColor: '#0f172a', padding: '12px', display: isMobile && selectedGroup ? 'none' : 'block' }}>
-              <h3 style={{ fontSize: '14px', fontWeight: '700', margin: '0 0 4px 0' }}>Groups</h3>
-              <p style={{ fontSize: '11px', color: '#94a3b8', margin: '0 0 10px 0' }}>Chat with several people at once</p>
-              
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {groups.map(group => (
-                  <div
-                    key={group.id}
-                    onClick={() => setSelectedGroup(group)}
-                    style={{ padding: '10px', borderRadius: '8px', backgroundColor: selectedGroup?.id === group.id ? '#1e293b' : 'transparent', cursor: 'pointer' }}
-                  >
-                    <div style={{ fontSize: '13px', fontWeight: '600', color: '#fff' }}>{group.name}</div>
-                    <div style={{ fontSize: '11px', color: '#94a3b8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{group.description}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div style={{ display: isMobile && !selectedGroup ? 'none' : 'flex', flexDirection: 'column', height: '100%', backgroundColor: '#151c2c' }}>
-              {selectedGroup ? (
-                <>
-                  <div style={{ padding: '12px 16px', borderBottom: '1px solid #1e293b', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      {isMobile && (
-                        <button onClick={() => setSelectedGroup(null)} style={{ background: 'none', border: 'none', color: '#60a5fa', fontSize: '12px', cursor: 'pointer', marginRight: '4px' }}>Back</button>
-                      )}
-                      <div>
-                        <div style={{ fontSize: '13px', fontWeight: '600' }}>{selectedGroup.name}</div>
-                        <div style={{ fontSize: '10px', color: '#94a3b8' }}>14 members</div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div style={{ flex: 1, padding: '16px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                    {groupMessages.map(gm => (
-                      <div key={gm.id} style={{ backgroundColor: '#1e293b', padding: '10px 14px', borderRadius: '10px', fontSize: '12px', maxWidth: '80%' }}>
-                        <div style={{ fontWeight: '600', color: '#60a5fa', marginBottom: '2px' }}>{gm.user}</div>
-                        <div style={{ color: '#fff' }}>{gm.text}</div>
-                        <div style={{ fontSize: '9px', color: '#94a3b8', textAlign: 'right', marginTop: '2px' }}>{gm.time}</div>
-                      </div>
-                    ))}
-                  </div>
-
-                  <form onSubmit={(e) => {
-                    e.preventDefault();
-                    if (!newGroupMsg.trim()) return;
-                    setGroupMessages(prev => [...prev, { id: Date.now().toString(), user: currentUser?.full_name || 'You', text: newGroupMsg, time: 'Just now' }]);
-                    setNewGroupMsg('');
-                  }} style={{ padding: '10px 16px', borderTop: '1px solid #1e293b', display: 'flex', gap: '8px' }}>
-                    <input
-                      type="text"
-                      placeholder="Message group..."
-                      value={newGroupMsg}
-                      onChange={(e) => setNewGroupMsg(e.target.value)}
-                      style={{ flex: 1, padding: '8px 12px', backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', color: '#fff', fontSize: '12px', outline: 'none' }}
-                    />
-                    <button type="submit" style={{ padding: '8px 14px', backgroundColor: '#2563eb', border: 'none', borderRadius: '8px', color: '#fff', cursor: 'pointer' }}>
-                      <FiSend />
-                    </button>
-                  </form>
-                </>
-              ) : (
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#94a3b8', fontSize: '13px' }}>
-                  Select a group from the list.
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
         {/* PROFILE TAB */}
         {activeTab === 'profile' && (
           <div style={{ backgroundColor: '#151c2c', border: isMobile ? 'none' : '1px solid #1e293b', borderRadius: isMobile ? '0px' : '14px', overflow: 'hidden' }}>
@@ -1499,14 +1585,8 @@ export default function App() {
               <div style={{ fontSize: '12px', color: '#60a5fa', marginBottom: '8px' }}>@{currentUser?.username}</div>
               
               <div style={{ display: 'flex', gap: '16px', fontSize: '12px', color: '#94a3b8', marginBottom: '12px' }}>
-                <div><b style={{ color: '#fff' }}>1</b> Followers</div>
-                <div><b style={{ color: '#fff' }}>1</b> Following</div>
+                <div><b style={{ color: '#eab308' }}>{lcfPoints}</b> LCF Points</div>
                 <div><b style={{ color: '#fff' }}>{friendCount}</b> Friends</div>
-              </div>
-
-              <div style={{ display: 'flex', gap: '8px', marginBottom: '14px' }}>
-                <span style={{ backgroundColor: 'rgba(34, 197, 94, 0.1)', color: '#4ade80', fontSize: '11px', padding: '4px 8px', borderRadius: '6px', border: '1px solid rgba(34,197,94,0.3)' }}>online now</span>
-                <span style={{ backgroundColor: '#1e293b', color: '#94a3b8', fontSize: '11px', padding: '4px 8px', borderRadius: '6px' }}>Public Profile</span>
               </div>
 
               <p style={{ fontSize: '13px', color: '#cbd5e1', lineHeight: '1.4', margin: '0 0 16px 0' }}>{currentUser?.bio}</p>
@@ -1514,7 +1594,7 @@ export default function App() {
               <div style={{ backgroundColor: '#0f172a', padding: '12px', borderRadius: '8px', fontSize: '12px', color: '#94a3b8', display: 'flex', flexDirection: 'column', gap: '4px' }}>
                 <div>Email: <span style={{ color: '#fff' }}>{currentUser?.email}</span></div>
                 <div>User ID: <span style={{ color: '#fff', fontSize: '10px' }}>{currentUser?.id}</span></div>
-                <div>Username: <span style={{ color: '#fff' }}>@{currentUser?.username}</span></div>
+                <div>Referral Code: <span style={{ color: '#60a5fa' }}>{currentUser?.username}</span></div>
               </div>
             </div>
 
@@ -1546,6 +1626,52 @@ export default function App() {
         )}
       </main>
 
+      {/* PAYOUT WITHDRAWAL MODAL */}
+      {showWithdrawModal && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '16px' }}>
+          <div style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '16px', padding: '24px', width: '100%', maxWidth: '400px', boxSizing: 'border-box' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+              <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#fff', margin: 0 }}>Request Naira Payout</h3>
+              <button onClick={() => setShowWithdrawModal(false)} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer' }}><FiX size={18} /></button>
+            </div>
+
+            <form onSubmit={handleRequestWithdrawal} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div>
+                <label style={{ fontSize: '11px', color: '#94a3b8', display: 'block', marginBottom: '4px' }}>Points to Withdraw (Min 2,000 PTS)</label>
+                <input
+                  type="number"
+                  min={2000}
+                  step={100}
+                  value={withdrawAmountPoints}
+                  onChange={(e) => setWithdrawAmountPoints(Number(e.target.value))}
+                  style={{ width: '100%', padding: '10px', backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
+                />
+              </div>
+
+              <div style={{ fontSize: '12px', color: '#22c55e', backgroundColor: '#0f172a', padding: '10px', borderRadius: '8px' }}>
+                You will receive: <b>₦{((withdrawAmountPoints / 2000) * 1000).toLocaleString()} Naira</b>
+              </div>
+
+              <div>
+                <label style={{ fontSize: '11px', color: '#94a3b8', display: 'block', marginBottom: '4px' }}>Payout Account (OPay Number or Bank Details)</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. OPay 08123456789 or Access Bank 0123456789"
+                  value={payoutDetails}
+                  onChange={(e) => setPayoutDetails(e.target.value)}
+                  style={{ width: '100%', padding: '10px', backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', color: '#fff', fontSize: '12px', boxSizing: 'border-box' }}
+                />
+              </div>
+
+              <button type="submit" style={{ marginTop: '8px', padding: '12px', backgroundColor: '#22c55e', border: 'none', borderRadius: '8px', color: '#fff', fontWeight: '700', fontSize: '13px', cursor: 'pointer' }}>
+                Submit Payout Request
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* PWA INSTALL MODAL */}
       {showInstallModal && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '16px' }}>
@@ -1576,7 +1702,7 @@ export default function App() {
           { id: 'reels', label: 'Reels', icon: <FiVideo size={18} /> },
           { id: 'chats', label: 'Chats', icon: <FiMessageSquare size={18} /> },
           { id: 'friends', label: 'Friends', icon: <FiUsers size={18} /> },
-          { id: 'groups', label: 'Groups', icon: <FiUsers size={18} /> },
+          { id: 'wallet', label: 'Wallet', icon: <FiGift size={18} /> },
           { id: 'profile', label: 'Profile', icon: <FiUser size={18} /> }
         ].map(tab => (
           <button
