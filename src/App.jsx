@@ -34,7 +34,8 @@ import {
   FiCopy,
   FiTrash2,
   FiVolume2,
-  FiVolumeX
+  FiVolumeX,
+  FiCornerDownRight
 } from 'react-icons/fi';
 
 export default function App() {
@@ -120,6 +121,8 @@ export default function App() {
   const [openCommentsPostId, setOpenCommentsPostId] = useState(null);
   const [postCommentsMap, setPostCommentsMap] = useState({});
   const [commentInputMap, setCommentInputMap] = useState({});
+  const [replyInputMap, setReplyInputMap] = useState({});
+  const [activeReplyCommentId, setActiveReplyCommentId] = useState(null);
   const [likedPosts, setLikedPosts] = useState({});
 
   // Notifications State
@@ -130,9 +133,12 @@ export default function App() {
   const [reels, setReels] = useState([]);
   const [likedReelsMap, setLikedReelsMap] = useState({});
   const [mutedReelsMap, setMutedReelsMap] = useState({});
+  const [activeReelId, setActiveReelId] = useState(null);
   const [openReelCommentsId, setOpenReelCommentsId] = useState(null);
   const [reelCommentsMap, setReelCommentsMap] = useState({});
   const [reelCommentInput, setReelCommentInput] = useState('');
+  const [reelReplyInput, setReelReplyInput] = useState('');
+  const [activeReelReplyId, setActiveReelReplyId] = useState(null);
 
   const [isCreatingReel, setIsCreatingReel] = useState(false);
   const [newReelTitle, setNewReelTitle] = useState('');
@@ -311,6 +317,9 @@ export default function App() {
 
       if (data && !error) {
         setReels(data);
+        if (data.length > 0 && !activeReelId) {
+          setActiveReelId(data[0].id);
+        }
         data.forEach(r => fetchCommentsForReel(r.id));
       }
     } catch (err) {
@@ -333,6 +342,7 @@ export default function App() {
     }
   };
 
+  // UNIQUE LIKE PER USER FOR REELS
   const handleToggleReelLike = async (reel) => {
     const isLiked = likedReelsMap[reel.id];
     const currentLikes = Number(reel.likes) || 0;
@@ -342,12 +352,10 @@ export default function App() {
     setReels(prev => prev.map(r => r.id === reel.id ? { ...r, likes: newLikesCount } : r));
 
     try {
-      const { error } = await supabase
+      await supabase
         .from('reels')
         .update({ likes: newLikesCount })
         .eq('id', reel.id);
-
-      if (error) throw error;
     } catch (err) {
       console.log('Reel like update error:', err);
     }
@@ -357,29 +365,35 @@ export default function App() {
     setMutedReelsMap(prev => ({ ...prev, [reelId]: !prev[reelId] }));
   };
 
-  const handleAddReelComment = async (reelId) => {
-    if (!reelCommentInput.trim()) return;
+  const handleAddReelComment = async (reelId, parentId = null) => {
+    const textToPost = parentId ? reelReplyInput : reelCommentInput;
+    if (!textToPost || !textToPost.trim()) return;
 
     const newCommentObj = {
       reel_id: reelId,
+      parent_id: parentId,
       user_id: session.user.id,
       user_name: currentUser?.full_name || 'You',
       avatar: currentUser?.avatar_url,
-      comment: reelCommentInput.trim()
+      comment: textToPost.trim()
     };
 
     setReelCommentsMap(prev => ({
       ...prev,
       [reelId]: [...(prev[reelId] || []), { ...newCommentObj, id: Date.now() }]
     }));
-    setReelCommentInput('');
+
+    if (parentId) {
+      setReelReplyInput('');
+      setActiveReelReplyId(null);
+    } else {
+      setReelCommentInput('');
+    }
 
     try {
-      const { error } = await supabase.from('reel_comments').insert([newCommentObj]);
-      if (error) throw error;
+      await supabase.from('reel_comments').insert([newCommentObj]);
     } catch (e) {
       console.log('Add reel comment error:', e);
-      alert('Failed to post comment: ' + e.message);
     }
   };
 
@@ -410,6 +424,7 @@ export default function App() {
 
       if (data) {
         setReels([data, ...reels]);
+        setActiveReelId(data.id);
       }
 
       setIsCreatingReel(false);
@@ -546,9 +561,11 @@ export default function App() {
     }
   };
 
+  // UNIQUE LIKE PER USER FOR FEED POSTS
   const handleToggleLike = async (post) => {
     const isCurrentlyLiked = likedPosts[post.id];
-    const updatedLikes = isCurrentlyLiked ? Math.max(0, (post.likes || 1) - 1) : (post.likes || 0) + 1;
+    const currentLikes = Number(post.likes) || 0;
+    const updatedLikes = isCurrentlyLiked ? Math.max(0, currentLikes - 1) : currentLikes + 1;
 
     setLikedPosts(prev => ({ ...prev, [post.id]: !isCurrentlyLiked }));
     setPosts(prev => prev.map(p => p.id === post.id ? { ...p, likes: updatedLikes } : p));
@@ -560,23 +577,30 @@ export default function App() {
     }
   };
 
-  const handleAddComment = async (postId) => {
-    const text = commentInputMap[postId];
-    if (!text || !text.trim()) return;
+  const handleAddComment = async (postId, parentId = null) => {
+    const textToPost = parentId ? replyInputMap[parentId] : commentInputMap[postId];
+    if (!textToPost || !textToPost.trim()) return;
 
     const newCommentObj = {
       post_id: postId,
+      parent_id: parentId,
       user_id: session.user.id,
       user_name: currentUser?.full_name || 'You',
       avatar: currentUser?.avatar_url,
-      comment: text
+      comment: textToPost.trim()
     };
 
     setPostCommentsMap(prev => ({
       ...prev,
       [postId]: [...(prev[postId] || []), { ...newCommentObj, id: Date.now() }]
     }));
-    setCommentInputMap(prev => ({ ...prev, [postId]: '' }));
+
+    if (parentId) {
+      setReplyInputMap(prev => ({ ...prev, [parentId]: '' }));
+      setActiveReplyCommentId(null);
+    } else {
+      setCommentInputMap(prev => ({ ...prev, [postId]: '' }));
+    }
 
     try {
       await supabase.from('post_comments').insert([newCommentObj]);
@@ -1464,6 +1488,8 @@ export default function App() {
             {posts.map(post => {
               const comments = postCommentsMap[post.id] || [];
               const isCommentsOpen = openCommentsPostId === post.id;
+              const parentComments = comments.filter(c => !c.parent_id);
+
               return (
                 <div key={post.id} style={{ backgroundColor: '#151c2c', border: isMobile ? 'none' : '1px solid #1e293b', borderBottom: '1px solid #1e293b', borderRadius: isMobile ? '0px' : '16px', padding: '18px', marginBottom: '16px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'between', marginBottom: '12px' }}>
@@ -1499,13 +1525,60 @@ export default function App() {
 
                   {isCommentsOpen && (
                     <div style={{ marginTop: '14px', paddingTop: '14px', borderTop: '1px solid #1e293b' }}>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '12px', maxHeight: '200px', overflowY: 'auto' }}>
-                        {comments.map((c, i) => (
-                          <div key={c.id || i} style={{ backgroundColor: '#0f172a', padding: '10px 14px', borderRadius: '10px', fontSize: '12px' }}>
-                            <span style={{ fontWeight: '600', color: '#60a5fa', marginRight: '6px' }}>{c.user_name}:</span>
-                            <span style={{ color: '#e2e8f0' }}>{c.comment}</span>
-                          </div>
-                        ))}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '14px', maxHeight: '250px', overflowY: 'auto' }}>
+                        {parentComments.map(c => {
+                          const replies = comments.filter(r => r.parent_id === c.id);
+                          const isReplying = activeReplyCommentId === c.id;
+
+                          return (
+                            <div key={c.id} style={{ backgroundColor: '#0f172a', padding: '10px 14px', borderRadius: '10px', fontSize: '12px' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
+                                <span style={{ fontWeight: '600', color: '#60a5fa' }}>{c.user_name}</span>
+                                <span style={{ fontSize: '10px', color: '#94a3b8' }}>{formatTimeAgo(c.created_at)}</span>
+                              </div>
+                              <div style={{ color: '#e2e8f0', marginBottom: '6px' }}>{c.comment}</div>
+
+                              <button
+                                onClick={() => setActiveReplyCommentId(isReplying ? null : c.id)}
+                                style={{ background: 'none', border: 'none', color: '#60a5fa', fontSize: '11px', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', gap: '4px' }}
+                              >
+                                <FiCornerDownRight size={11} /> Reply
+                              </button>
+
+                              {replies.length > 0 && (
+                                <div style={{ marginTop: '8px', paddingLeft: '14px', borderLeft: '2px solid #1e293b', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                  {replies.map(rep => (
+                                    <div key={rep.id} style={{ fontSize: '11px' }}>
+                                      <span style={{ fontWeight: '600', color: '#38bdf8', marginRight: '6px' }}>{rep.user_name}:</span>
+                                      <span style={{ color: '#cbd5e1' }}>{rep.comment}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+
+                              {isReplying && (
+                                <div style={{ display: 'flex', gap: '6px', marginTop: '8px' }}>
+                                  <input
+                                    type="text"
+                                    placeholder={`Reply to ${c.user_name}...`}
+                                    value={replyInputMap[c.id] || ''}
+                                    onChange={(e) => setReplyInputMap({ ...replyInputMap, [c.id]: e.target.value })}
+                                    style={{ flex: 1, padding: '8px 10px', backgroundColor: '#1e293b', border: 'none', borderRadius: '6px', color: '#fff', fontSize: '11px', outline: 'none' }}
+                                  />
+                                  <button
+                                    onClick={() => handleAddComment(post.id, c.id)}
+                                    style={{ padding: '8px 12px', backgroundColor: '#2563eb', border: 'none', borderRadius: '6px', color: '#fff', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}
+                                  >
+                                    Send
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                        {parentComments.length === 0 && (
+                          <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: '12px', padding: '10px' }}>No comments yet.</div>
+                        )}
                       </div>
 
                       <div style={{ display: 'flex', gap: '8px' }}>
@@ -1528,7 +1601,7 @@ export default function App() {
           </div>
         )}
 
-        {/* REELS TAB (SOUND & FUNCTIONAL COMMENTS ENABLED) */}
+        {/* REELS TAB (STRICT SINGLE-AUDIO & ACCESSIBLE COMMENTS & REPLIES) */}
         {activeTab === 'reels' && (
           <div style={{ position: 'relative', width: '100vw', height: 'calc(100vh - 60px)', backgroundColor: '#000', overflow: 'hidden' }}>
             <div style={{ position: 'absolute', top: 12, right: 12, zIndex: 50 }}>
@@ -1565,19 +1638,41 @@ export default function App() {
               </div>
             )}
 
-            <div style={{ height: '100%', width: '100%', overflowY: 'scroll', scrollSnapType: 'y mandatory', scrollbarWidth: 'none' }}>
+            <div
+              onScroll={(e) => {
+                const container = e.currentTarget;
+                const scrollTop = container.scrollTop;
+                const height = container.clientHeight;
+                const index = Math.round(scrollTop / height);
+                if (reels[index] && reels[index].id !== activeReelId) {
+                  setActiveReelId(reels[index].id);
+                }
+              }}
+              style={{ height: '100%', width: '100%', overflowY: 'scroll', scrollSnapType: 'y mandatory', scrollbarWidth: 'none' }}
+            >
               {reels.map(reel => {
                 const isMyReel = reel.user_id === session?.user?.id;
                 const isLiked = likedReelsMap[reel.id];
                 const likesCount = reel.likes || (isLiked ? 1 : 0);
-                const isMuted = mutedReelsMap[reel.id] ?? false;
+                const isCurrentActive = activeReelId === reel.id;
+                const isMuted = mutedReelsMap[reel.id] ?? !isCurrentActive;
                 const comments = reelCommentsMap[reel.id] || [];
+                const parentReelComments = comments.filter(c => !c.parent_id);
                 const isCommentsOpen = openReelCommentsId === reel.id;
 
                 return (
                   <div key={reel.id} style={{ position: 'relative', width: '100%', height: '100%', backgroundColor: '#000', scrollSnapAlign: 'start', scrollSnapStop: 'always' }}>
                     {reel.isvideo ? (
-                      <video src={reel.url} controls={false} autoPlay playsInline muted={isMuted} loop style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      <video
+                        src={reel.url}
+                        controls={false}
+                        autoPlay
+                        playsInline
+                        muted={isMuted}
+                        loop
+                        onPlay={() => setActiveReelId(reel.id)}
+                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                      />
                     ) : (
                       <img src={reel.url} alt="reel" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                     )}
@@ -1640,22 +1735,63 @@ export default function App() {
                       <div style={{ fontSize: '13px', color: '#f1f5f9', lineHeight: '1.4' }}>{reel.title}</div>
                     </div>
 
-                    {/* REEL COMMENTS MODAL / DRAWER */}
+                    {/* REEL COMMENTS MODAL & REPLIES DRAWER */}
                     {isCommentsOpen && (
-                      <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '60%', backgroundColor: '#151c2c', borderTopLeftRadius: '20px', borderTopRightRadius: '20px', zIndex: 100, display: 'flex', flexDirection: 'column', padding: '16px', boxSizing: 'border-box' }}>
+                      <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '65%', backgroundColor: '#151c2c', borderTopLeftRadius: '20px', borderTopRightRadius: '20px', zIndex: 100, display: 'flex', flexDirection: 'column', padding: '16px', boxSizing: 'border-box' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #1e293b', paddingBottom: '10px', marginBottom: '12px' }}>
                           <h4 style={{ fontSize: '14px', fontWeight: '700', margin: 0, color: '#fff' }}>Comments ({comments.length})</h4>
                           <button onClick={() => setOpenReelCommentsId(null)} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer' }}><FiX size={18} /></button>
                         </div>
 
                         <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '12px' }}>
-                          {comments.map((c, i) => (
-                            <div key={c.id || i} style={{ backgroundColor: '#0f172a', padding: '10px 12px', borderRadius: '10px', fontSize: '12px' }}>
-                              <div style={{ fontWeight: '600', color: '#60a5fa', marginBottom: '2px' }}>{c.user_name}</div>
-                              <div style={{ color: '#e2e8f0' }}>{c.comment}</div>
-                            </div>
-                          ))}
-                          {comments.length === 0 && (
+                          {parentReelComments.map(c => {
+                            const replies = comments.filter(r => r.parent_id === c.id);
+                            const isReplying = activeReelReplyId === c.id;
+
+                            return (
+                              <div key={c.id} style={{ backgroundColor: '#0f172a', padding: '10px 12px', borderRadius: '10px', fontSize: '12px' }}>
+                                <div style={{ fontWeight: '600', color: '#60a5fa', marginBottom: '2px' }}>{c.user_name}</div>
+                                <div style={{ color: '#e2e8f0', marginBottom: '6px' }}>{c.comment}</div>
+
+                                <button
+                                  onClick={() => setActiveReelReplyId(isReplying ? null : c.id)}
+                                  style={{ background: 'none', border: 'none', color: '#60a5fa', fontSize: '11px', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', gap: '4px' }}
+                                >
+                                  <FiCornerDownRight size={11} /> Reply
+                                </button>
+
+                                {replies.length > 0 && (
+                                  <div style={{ marginTop: '6px', paddingLeft: '12px', borderLeft: '2px solid #1e293b', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                    {replies.map(rep => (
+                                      <div key={rep.id} style={{ fontSize: '11px' }}>
+                                        <span style={{ fontWeight: '600', color: '#38bdf8', marginRight: '6px' }}>{rep.user_name}:</span>
+                                        <span style={{ color: '#cbd5e1' }}>{rep.comment}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+
+                                {isReplying && (
+                                  <div style={{ display: 'flex', gap: '6px', marginTop: '8px' }}>
+                                    <input
+                                      type="text"
+                                      placeholder={`Reply to ${c.user_name}...`}
+                                      value={reelReplyInput}
+                                      onChange={(e) => setReelReplyInput(e.target.value)}
+                                      style={{ flex: 1, padding: '8px 10px', backgroundColor: '#1e293b', border: 'none', borderRadius: '6px', color: '#fff', fontSize: '11px', outline: 'none' }}
+                                    />
+                                    <button
+                                      onClick={() => handleAddReelComment(reel.id, c.id)}
+                                      style={{ padding: '8px 12px', backgroundColor: '#2563eb', border: 'none', borderRadius: '6px', color: '#fff', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}
+                                    >
+                                      Send
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                          {parentReelComments.length === 0 && (
                             <div style={{ textAlign: 'center', color: '#94a3b8', padding: '30px', fontSize: '12px' }}>No comments yet. Be the first to comment!</div>
                           )}
                         </div>
