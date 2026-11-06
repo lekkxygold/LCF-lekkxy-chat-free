@@ -18,14 +18,11 @@ import {
   FiSave,
   FiBell,
   FiUserPlus,
-  FiUserCheck,
-  FiUserX,
   FiMessageCircle,
   FiRefreshCw,
   FiDownload,
   FiMic,
   FiSquare,
-  FiPlay,
   FiPlus,
   FiGift,
   FiShare2,
@@ -125,7 +122,7 @@ export default function App() {
   const [commentInputMap, setCommentInputMap] = useState({});
   const [replyInputMap, setReplyInputMap] = useState({});
   const [activeReplyCommentId, setActiveReplyCommentId] = useState(null);
-  const [likedPosts, setLikedPosts] = useState({});
+  const [likedPostsMap, setLikedPostsMap] = useState({});
 
   // Notifications State
   const [notifications, setNotifications] = useState([]);
@@ -231,8 +228,40 @@ export default function App() {
       fetchReels();
       fetchFriendRequests();
       fetchUnreadMessageCounts();
+      fetchUserLikes();
     }
   }, [session]);
+
+  const fetchUserLikes = async () => {
+    if (!session) return;
+    try {
+      // Fetch Reel Likes
+      const { data: rLikes } = await supabase
+        .from('reel_likes')
+        .select('reel_id')
+        .eq('user_id', session.user.id);
+      
+      if (rLikes) {
+        const rMap = {};
+        rLikes.forEach(l => { rMap[l.reel_id] = true; });
+        setLikedReelsMap(rMap);
+      }
+
+      // Fetch Post Likes
+      const { data: pLikes } = await supabase
+        .from('post_likes')
+        .select('post_id')
+        .eq('user_id', session.user.id);
+      
+      if (pLikes) {
+        const pMap = {};
+        pLikes.forEach(l => { pMap[l.post_id] = true; });
+        setLikedPostsMap(pMap);
+      }
+    } catch (e) {
+      console.log('Error fetching user likes:', e);
+    }
+  };
 
   useEffect(() => {
     if (messagesEndRef.current) {
@@ -344,8 +373,9 @@ export default function App() {
     }
   };
 
-  // UNIQUE LIKE PER USER FOR REELS (PREVENTS DOUBLE LIKING)
+  // PERSISTENT UNIQUE LIKE PER USER FOR REELS (PREVENTS DOUBLE LIKING ACROSS REFRESH)
   const handleToggleReelLike = async (reel) => {
+    if (!session) return;
     const isLiked = likedReelsMap[reel.id];
     const currentLikes = Number(reel.likes) || 0;
     const newLikesCount = isLiked ? Math.max(0, currentLikes - 1) : currentLikes + 1;
@@ -354,12 +384,24 @@ export default function App() {
     setReels(prev => prev.map(r => r.id === reel.id ? { ...r, likes: newLikesCount } : r));
 
     try {
+      if (isLiked) {
+        await supabase
+          .from('reel_likes')
+          .delete()
+          .eq('reel_id', reel.id)
+          .eq('user_id', session.user.id);
+      } else {
+        await supabase
+          .from('reel_likes')
+          .insert([{ reel_id: reel.id, user_id: session.user.id }]);
+      }
+
       await supabase
         .from('reels')
         .update({ likes: newLikesCount })
         .eq('id', reel.id);
     } catch (err) {
-      console.log('Reel like update error:', err);
+      console.log('Reel like sync error:', err);
     }
   };
 
@@ -380,11 +422,6 @@ export default function App() {
       comment: textToPost.trim()
     };
 
-    setReelCommentsMap(prev => ({
-      ...prev,
-      [reelId]: [...(prev[reelId] || []), { ...newCommentObj, id: Date.now() }]
-    }));
-
     if (parentId) {
       setReelReplyInput('');
       setActiveReelReplyId(null);
@@ -393,9 +430,22 @@ export default function App() {
     }
 
     try {
-      await supabase.from('reel_comments').insert([newCommentObj]);
+      const { data, error } = await supabase
+        .from('reel_comments')
+        .insert([newCommentObj])
+        .select()
+        .single();
+
+      if (error) throw error;
+      if (data) {
+        setReelCommentsMap(prev => ({
+          ...prev,
+          [reelId]: [...(prev[reelId] || []), data]
+        }));
+      }
     } catch (e) {
       console.log('Add reel comment error:', e);
+      alert('Failed to post comment. Ensure reel_comments table exists in Supabase.');
     }
   };
 
@@ -563,16 +613,29 @@ export default function App() {
     }
   };
 
-  // UNIQUE LIKE PER USER FOR FEED POSTS (PREVENTS DOUBLE LIKING)
+  // PERSISTENT UNIQUE LIKE PER USER FOR FEED POSTS
   const handleToggleLike = async (post) => {
-    const isCurrentlyLiked = likedPosts[post.id];
+    if (!session) return;
+    const isCurrentlyLiked = likedPostsMap[post.id];
     const currentLikes = Number(post.likes) || 0;
     const updatedLikes = isCurrentlyLiked ? Math.max(0, currentLikes - 1) : currentLikes + 1;
 
-    setLikedPosts(prev => ({ ...prev, [post.id]: !isCurrentlyLiked }));
+    setLikedPostsMap(prev => ({ ...prev, [post.id]: !isCurrentlyLiked }));
     setPosts(prev => prev.map(p => p.id === post.id ? { ...p, likes: updatedLikes } : p));
 
     try {
+      if (isCurrentlyLiked) {
+        await supabase
+          .from('post_likes')
+          .delete()
+          .eq('post_id', post.id)
+          .eq('user_id', session.user.id);
+      } else {
+        await supabase
+          .from('post_likes')
+          .insert([{ post_id: post.id, user_id: session.user.id }]);
+      }
+
       await supabase.from('posts').update({ likes: updatedLikes }).eq('id', post.id);
     } catch (e) {
       console.log('Like update error:', e);
@@ -592,11 +655,6 @@ export default function App() {
       comment: textToPost.trim()
     };
 
-    setPostCommentsMap(prev => ({
-      ...prev,
-      [postId]: [...(prev[postId] || []), { ...newCommentObj, id: Date.now() }]
-    }));
-
     if (parentId) {
       setReplyInputMap(prev => ({ ...prev, [parentId]: '' }));
       setActiveReplyCommentId(null);
@@ -605,7 +663,19 @@ export default function App() {
     }
 
     try {
-      await supabase.from('post_comments').insert([newCommentObj]);
+      const { data, error } = await supabase
+        .from('post_comments')
+        .insert([newCommentObj])
+        .select()
+        .single();
+
+      if (error) throw error;
+      if (data) {
+        setPostCommentsMap(prev => ({
+          ...prev,
+          [postId]: [...(prev[postId] || []), data]
+        }));
+      }
     } catch (e) {
       console.log('Add comment error:', e);
     }
@@ -1543,7 +1613,7 @@ export default function App() {
               const comments = postCommentsMap[post.id] || [];
               const isCommentsOpen = openCommentsPostId === post.id;
               const parentComments = comments.filter(c => !c.parent_id);
-              const isLiked = likedPosts[post.id];
+              const isLiked = likedPostsMap[post.id];
 
               return (
                 <div key={post.id} style={{ backgroundColor: '#151c2c', border: isMobile ? 'none' : '1px solid #1e293b', borderBottom: '1px solid #1e293b', borderRadius: isMobile ? '0px' : '16px', padding: '18px', marginBottom: '16px' }}>
@@ -1716,7 +1786,7 @@ export default function App() {
               {reels.map(reel => {
                 const isMyReel = reel.user_id === session?.user?.id;
                 const isLiked = likedReelsMap[reel.id];
-                const likesCount = reel.likes || (isLiked ? 1 : 0);
+                const likesCount = reel.likes || 0;
                 const isCurrentActive = activeReelId === reel.id;
                 const isMuted = mutedReelsMap[reel.id] ?? !isCurrentActive;
                 const comments = reelCommentsMap[reel.id] || [];
@@ -1867,13 +1937,13 @@ export default function App() {
                           )}
                         </div>
 
-                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', background: '#151c2c', paddingBottom: '10px' }}>
                           <input
                             type="text"
                             placeholder="Add a comment..."
                             value={reelCommentInput}
                             onChange={(e) => setReelCommentInput(e.target.value)}
-                            style={{ flex: 1, padding: '12px 14px', backgroundColor: '#0f172a', border: '1px solid #334155', borderRadius: '8px', color: '#fff', fontSize: '12px', outline: 'none' }}
+                            style={{ flex: 1, padding: '12px 14px', backgroundColor: '#0f172a', border: '1px solid #334155', borderRadius: '8px', color: '#fff', fontSize: '12px', outline: 'none', pointerEvents: 'auto' }}
                           />
                           <button onClick={() => handleAddReelComment(reel.id)} style={{ padding: '12px 18px', backgroundColor: '#2563eb', border: 'none', borderRadius: '8px', color: '#fff', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
                             Post
