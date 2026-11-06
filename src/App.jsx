@@ -60,7 +60,6 @@ export default function App() {
   const [authSuccess, setAuthSuccess] = useState('');
   const [resendingEmail, setResendingEmail] = useState(false);
 
-  // Capture ?ref=username from URL or Hash automatically on load
   useEffect(() => {
     const getParam = (param) => {
       const urlParams = new URLSearchParams(window.location.search);
@@ -125,8 +124,9 @@ export default function App() {
   const [notifications, setNotifications] = useState([]);
   const [showNotifications, setShowNotifications] = useState(false);
 
-  // Reels State
+  // Reels Interactive & Like State
   const [reels, setReels] = useState([]);
+  const [likedReelsMap, setLikedReelsMap] = useState({});
   const [isCreatingReel, setIsCreatingReel] = useState(false);
   const [newReelTitle, setNewReelTitle] = useState('');
   const [newReelMediaBase64, setNewReelMediaBase64] = useState(null);
@@ -146,7 +146,6 @@ export default function App() {
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
 
-  // Time Ago Formatter Helper
   const formatTimeAgo = (dateString) => {
     if (!dateString) return 'Just now';
     const diffMinutes = Math.floor((new Date() - new Date(dateString)) / 60000);
@@ -190,7 +189,6 @@ export default function App() {
     };
   }, []);
 
-  // Presence Heartbeat Tracker
   useEffect(() => {
     if (!session) return;
 
@@ -221,7 +219,6 @@ export default function App() {
     }
   }, [session]);
 
-  // Auto scroll chat to bottom when messages update
   useEffect(() => {
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
@@ -313,6 +310,20 @@ export default function App() {
     }
   };
 
+  const handleToggleReelLike = async (reel) => {
+    const isLiked = likedReelsMap[reel.id];
+    const newLikesCount = isLiked ? Math.max(0, (reel.likes || 0) - 1) : (reel.likes || 0) + 1;
+
+    setLikedReelsMap(prev => ({ ...prev, [reel.id]: !isLiked }));
+    setReels(prev => prev.map(r => r.id === reel.id ? { ...r, likes: newLikesCount } : r));
+
+    try {
+      await supabase.from('reels').update({ likes: newLikesCount }).eq('id', reel.id);
+    } catch (err) {
+      console.log('Reel like update error:', err);
+    }
+  };
+
   const handlePublishReel = async () => {
     if (!newReelMediaBase64) {
       alert("Please select a video or photo file from your phone first.");
@@ -325,6 +336,7 @@ export default function App() {
       title: newReelTitle || 'My Reel',
       url: newReelMediaBase64,
       isvideo: isReelVideoType,
+      likes: 0,
       views: '1 view'
     };
 
@@ -409,12 +421,12 @@ export default function App() {
     if (navigator.share) {
       navigator.share({
         title: 'LCF Post',
-        text: post.content || 'Check out this post on LCF Social Hub',
+        text: post.content || 'Check out this content on LCF Social Hub',
         url: window.location.href
       }).catch(() => {});
     } else {
       navigator.clipboard.writeText(post.content || window.location.href);
-      alert('Post content or link copied to clipboard!');
+      alert('Link copied to clipboard!');
     }
   };
 
@@ -1209,7 +1221,7 @@ export default function App() {
       </header>
 
       {/* MAIN CONTAINER */}
-      <main style={{ width: '100vw', maxWidth: '800px', margin: '0 auto', padding: isMobile ? '12px' : '20px', boxSizing: 'border-box' }}>
+      <main style={{ width: '100vw', maxWidth: '800px', margin: '0 auto', padding: activeTab === 'reels' ? '0' : (isMobile ? '12px' : '20px'), boxSizing: 'border-box' }}>
         
         {/* HOME DASHBOARD TAB */}
         {activeTab === 'home' && (
@@ -1445,79 +1457,111 @@ export default function App() {
           </div>
         )}
 
-        {/* REELS TAB (Smooth Vertical Snap Scrolling, Video Uploads & Engagement Counters) */}
+        {/* REELS TAB (FULL TIKTOK-STYLE IMMERSIVE VERTICAL FEED) */}
         {activeTab === 'reels' && (
-          <div style={{ padding: '0 4px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-              <h2 style={{ fontSize: '16px', fontWeight: '700', margin: 0 }}>Community Reels</h2>
-              <button onClick={() => setIsCreatingReel(true)} style={{ padding: '8px 16px', backgroundColor: '#2563eb', border: 'none', borderRadius: '20px', color: '#fff', fontSize: '12px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <FiPlus /> Upload Short Video / Photo
+          <div style={{ position: 'relative', width: '100vw', height: 'calc(100vh - 60px)', backgroundColor: '#000', overflow: 'hidden' }}>
+            <div style={{ position: 'absolute', top: 12, right: 12, zIndex: 50 }}>
+              <button onClick={() => setIsCreatingReel(true)} style={{ padding: '8px 16px', backgroundColor: 'rgba(37,99,235,0.85)', backdropFilter: 'blur(8px)', border: 'none', borderRadius: '20px', color: '#fff', fontSize: '12px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <FiPlus /> Upload Reel
               </button>
             </div>
 
             {isCreatingReel && (
-              <div style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '16px', padding: '16px', marginBottom: '20px' }}>
-                <h3 style={{ fontSize: '14px', fontWeight: '600', marginBottom: '12px' }}>Upload Reel (10-40s Video or Photo)</h3>
-                <input
-                  type="text"
-                  placeholder="Reel caption / title..."
-                  value={newReelTitle}
-                  onChange={(e) => setNewReelTitle(e.target.value)}
-                  style={{ width: '100%', padding: '12px', backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', color: '#fff', fontSize: '12px', marginBottom: '12px', boxSizing: 'border-box' }}
-                />
+              <div style={{ position: 'absolute', inset: 0, backgroundColor: 'rgba(0,0,0,0.9)', zIndex: 100, padding: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <div style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '16px', padding: '20px', width: '100%', maxWidth: '400px' }}>
+                  <h3 style={{ fontSize: '16px', fontWeight: '700', marginBottom: '12px', color: '#fff' }}>Upload Short Reel</h3>
+                  <input
+                    type="text"
+                    placeholder="Caption / description..."
+                    value={newReelTitle}
+                    onChange={(e) => setNewReelTitle(e.target.value)}
+                    style={{ width: '100%', padding: '12px', backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', color: '#fff', fontSize: '12px', marginBottom: '12px', boxSizing: 'border-box' }}
+                  />
 
-                <div style={{ marginBottom: '14px' }}>
-                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '10px 16px', backgroundColor: '#1e293b', border: '1px solid #3b82f6', borderRadius: '8px', color: '#60a5fa', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
-                    <FiVideo size={16} /> Choose Video or Photo from Phone
-                    <input type="file" accept="video/*,image/*" onChange={(e) => handleDeviceFileUpload(e, 'newReelMediaBase64')} style={{ display: 'none' }} />
-                  </label>
-                  {newReelMediaBase64 && <span style={{ marginLeft: '12px', fontSize: '11px', color: '#22c55e' }}>Media attached successfully!</span>}
-                </div>
+                  <div style={{ marginBottom: '16px' }}>
+                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '10px 16px', backgroundColor: '#1e293b', border: '1px solid #3b82f6', borderRadius: '8px', color: '#60a5fa', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
+                      <FiVideo size={16} /> Choose Video or Photo
+                      <input type="file" accept="video/*,image/*" onChange={(e) => handleDeviceFileUpload(e, 'newReelMediaBase64')} style={{ display: 'none' }} />
+                    </label>
+                    {newReelMediaBase64 && <div style={{ marginTop: '6px', fontSize: '11px', color: '#22c55e' }}>Media attached!</div>}
+                  </div>
 
-                <div style={{ display: 'flex', gap: '10px' }}>
-                  <button onClick={handlePublishReel} style={{ padding: '8px 16px', backgroundColor: '#2563eb', border: 'none', borderRadius: '8px', color: '#fff', fontSize: '12px', cursor: 'pointer' }}>Publish Reel</button>
-                  <button onClick={() => setIsCreatingReel(false)} style={{ padding: '8px 16px', backgroundColor: '#1e293b', border: 'none', borderRadius: '8px', color: '#94a3b8', fontSize: '12px', cursor: 'pointer' }}>Cancel</button>
+                  <div style={{ display: 'flex', gap: '10px' }}>
+                    <button onClick={handlePublishReel} style={{ flex: 1, padding: '10px', backgroundColor: '#2563eb', border: 'none', borderRadius: '8px', color: '#fff', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>Publish</button>
+                    <button onClick={() => setIsCreatingReel(false)} style={{ flex: 1, padding: '10px', backgroundColor: '#1e293b', border: 'none', borderRadius: '8px', color: '#94a3b8', fontSize: '12px', cursor: 'pointer' }}>Cancel</button>
+                  </div>
                 </div>
               </div>
             )}
 
-            {/* REELS VERTICAL SNAP SCROLL CONTAINER */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', height: 'calc(100vh - 180px)', overflowY: 'scroll', scrollSnapType: 'y mandatory', scrollbarWidth: 'none', paddingBottom: '40px' }}>
+            <div style={{ height: '100%', width: '100%', overflowY: 'scroll', scrollSnapType: 'y mandatory', scrollbarWidth: 'none' }}>
               {reels.map(reel => {
                 const isMyReel = reel.user_id === session?.user?.id;
+                const isLiked = likedReelsMap[reel.id];
+                const likesCount = reel.likes || (isLiked ? 1 : 0);
+
                 return (
-                  <div key={reel.id} style={{ position: 'relative', borderRadius: '16px', overflow: 'hidden', height: '420px', minHeight: '420px', backgroundColor: '#000', border: '1px solid #1e293b', scrollSnapAlign: 'start', scrollSnapStop: 'always', flexShrink: 0 }}>
+                  <div key={reel.id} style={{ position: 'relative', width: '100%', height: '100%', backgroundColor: '#000', scrollSnapAlign: 'start', scrollSnapStop: 'always' }}>
                     {reel.isvideo ? (
-                      <video src={reel.url} controls autoPlay muted loop style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      <video src={reel.url} controls={false} autoPlay muted loop style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                     ) : (
                       <img src={reel.url} alt="reel" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                     )}
 
-                    {isMyReel && (
-                      <button
-                        onClick={() => handleDeleteReel(reel.id)}
-                        style={{ position: 'absolute', top: 14, right: 14, backgroundColor: 'rgba(239,68,68,0.85)', border: 'none', borderRadius: '50%', width: '36px', height: '36px', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', zIndex: 10 }}
-                        title="Delete your reel"
-                      >
-                        <FiTrash2 size={15} />
-                      </button>
-                    )}
+                    {/* RIGHT TIKTOK ACTION SIDEBAR */}
+                    <div style={{ position: 'absolute', right: 16, bottom: 90, display: 'flex', flexDirection: 'column', gap: '20px', alignItems: 'center', zIndex: 40 }}>
+                      {/* USER AVATAR BADGE */}
+                      <div style={{ position: 'relative', marginBottom: '8px' }}>
+                        <img src={currentUser?.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200'} alt="creator" style={{ width: '48px', height: '48px', borderRadius: '50%', border: '2px solid #fff', objectFit: 'cover' }} />
+                        <span style={{ position: 'absolute', bottom: -6, left: '50%', transform: 'translateX(-50%)', backgroundColor: '#ef4444', color: '#fff', fontSize: '10px', width: '18px', height: '18px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>+</span>
+                      </div>
 
-                    {/* ENGAGEMENT COUNTERS OVERLAY */}
-                    <div style={{ position: 'absolute', right: 14, bottom: 80, display: 'flex', flexDirection: 'column', gap: '14px', alignItems: 'center', zIndex: 10 }}>
-                      <div style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)', padding: '10px', borderRadius: '50%', display: 'flex', flexDirection: 'column', alignItems: 'center', color: '#fff', cursor: 'pointer' }}>
-                        <FiHeart size={20} />
-                        <span style={{ fontSize: '10px', marginTop: '2px' }}>128</span>
+                      {/* LIKE / HEART BUTTON */}
+                      <button onClick={() => handleToggleReelLike(reel)} style={{ background: 'none', border: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', color: isLiked ? '#ef4444' : '#fff', cursor: 'pointer' }}>
+                        <div style={{ backgroundColor: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(10px)', padding: '12px', borderRadius: '50%' }}>
+                          <FiHeart size={26} fill={isLiked ? '#ef4444' : 'none'} />
+                        </div>
+                        <span style={{ fontSize: '12px', fontWeight: '700', marginTop: '4px', textShadow: '0 1px 3px rgba(0,0,0,0.8)' }}>
+                          {likesCount > 1000 ? `${(likesCount / 1000).toFixed(1)}K` : likesCount}
+                        </span>
+                      </button>
+
+                      {/* COMMENT BUTTON */}
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', color: '#fff', cursor: 'pointer' }}>
+                        <div style={{ backgroundColor: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(10px)', padding: '12px', borderRadius: '50%' }}>
+                          <FiMessageCircle size={26} />
+                        </div>
+                        <span style={{ fontSize: '12px', fontWeight: '700', marginTop: '4px', textShadow: '0 1px 3px rgba(0,0,0,0.8)' }}>
+                          {reel.views ? '12' : '0'}
+                        </span>
                       </div>
-                      <div style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)', padding: '10px', borderRadius: '50%', display: 'flex', flexDirection: 'column', alignItems: 'center', color: '#fff' }}>
-                        <FiVideo size={20} />
-                        <span style={{ fontSize: '10px', marginTop: '2px' }}>{reel.views || '1v'}</span>
-                      </div>
+
+                      {/* SHARE BUTTON */}
+                      <button onClick={() => handleSharePost({ content: reel.title })} style={{ background: 'none', border: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', color: '#fff', cursor: 'pointer' }}>
+                        <div style={{ backgroundColor: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(10px)', padding: '12px', borderRadius: '50%' }}>
+                          <FiShare2 size={26} />
+                        </div>
+                        <span style={{ fontSize: '12px', fontWeight: '700', marginTop: '4px', textShadow: '0 1px 3px rgba(0,0,0,0.8)' }}>
+                          Share
+                        </span>
+                      </button>
+
+                      {/* DELETE BUTTON FOR CREATOR */}
+                      {isMyReel && (
+                        <button onClick={() => handleDeleteReel(reel.id)} style={{ background: 'none', border: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', color: '#ef4444', cursor: 'pointer' }}>
+                          <div style={{ backgroundColor: 'rgba(239,68,68,0.2)', backdropFilter: 'blur(10px)', padding: '10px', borderRadius: '50%' }}>
+                            <FiTrash2 size={20} />
+                          </div>
+                        </button>
+                      )}
                     </div>
 
-                    <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '20px 16px', background: 'linear-gradient(to top, rgba(0,0,0,0.95), transparent)', pointerEvents: 'none' }}>
-                      <div style={{ fontSize: '14px', fontWeight: '700', color: '#fff', marginBottom: '4px' }}>@{reel.user}</div>
-                      <div style={{ fontSize: '12px', color: '#cbd5e1' }}>{reel.title}</div>
+                    {/* BOTTOM TEXT CAPTION OVERLAY */}
+                    <div style={{ position: 'absolute', bottom: 80, left: 16, right: 80, zIndex: 40, pointerEvents: 'none', textShadow: '0 1px 4px rgba(0,0,0,0.9)' }}>
+                      <div style={{ fontSize: '15px', fontWeight: '700', color: '#fff', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        @{reel.user} ✨
+                      </div>
+                      <div style={{ fontSize: '13px', color: '#f1f5f9', lineHeight: '1.4' }}>{reel.title}</div>
                     </div>
                   </div>
                 );
