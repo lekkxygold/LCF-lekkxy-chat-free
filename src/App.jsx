@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from './supabaseClient';
 import {
   FiHome,
@@ -24,6 +24,7 @@ import {
   FiRefreshCw,
   FiDownload,
   FiMic,
+  FiSquare,
   FiPlay,
   FiPlus,
   FiGift,
@@ -47,15 +48,40 @@ export default function App() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Auth State
+  // Auth State & Referral Param Capture
   const [authMode, setAuthMode] = useState('login'); 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [username, setUsername] = useState('');
   const [fullName, setFullName] = useState('');
+  const [referredBy, setReferredBy] = useState('');
   const [authError, setAuthError] = useState('');
   const [authSuccess, setAuthSuccess] = useState('');
   const [resendingEmail, setResendingEmail] = useState(false);
+
+  // Capture ?ref=username from URL or Hash automatically on load
+  useEffect(() => {
+    const getParam = (param) => {
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.has(param)) return urlParams.get(param);
+      const hash = window.location.hash;
+      if (hash.includes('?')) {
+        const hashParams = new URLSearchParams(hash.substring(hash.indexOf('?')));
+        if (hashParams.has(param)) return hashParams.get(param);
+      }
+      return null;
+    };
+
+    const refCode = getParam('ref');
+    if (refCode) {
+      setReferredBy(refCode);
+      setAuthMode('signup');
+      localStorage.setItem('lcf_referred_by', refCode);
+    } else {
+      const savedRef = localStorage.getItem('lcf_referred_by');
+      if (savedRef) setReferredBy(savedRef);
+    }
+  }, []);
 
   // PWA Install Prompt State
   const [installPromptEvent, setInstallPromptEvent] = useState(null);
@@ -98,24 +124,15 @@ export default function App() {
   const [notifications, setNotifications] = useState([]);
   const [showNotifications, setShowNotifications] = useState(false);
 
-  // Reels State
+  // Reels State (Supports direct phone video/photo uploads)
   const [reels, setReels] = useState([
-    { id: '1', title: 'Street-pop beat breakdown & lyrics', user: 'lekkxygold', views: '3.4k', url: 'https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&q=80&w=400' },
-    { id: '2', title: 'Commercial Lounge Architecture', user: 'gene_foster', views: '1.9k', url: 'https://images.unsplash.com/photo-1554118811-1e0d58224f24?auto=format&fit=crop&q=80&w=400' }
+    { id: '1', title: 'Street-pop beat breakdown & lyrics', user: 'lekkxygold', views: '3.4k', url: 'https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&q=80&w=400', isVideo: false },
+    { id: '2', title: 'Commercial Lounge Architecture', user: 'gene_foster', views: '1.9k', url: 'https://images.unsplash.com/photo-1554118811-1e0d58224f24?auto=format&fit=crop&q=80&w=400', isVideo: false }
   ]);
   const [isCreatingReel, setIsCreatingReel] = useState(false);
   const [newReelTitle, setNewReelTitle] = useState('');
-  const [newReelUrl, setNewReelUrl] = useState('');
-
-  // Groups State
-  const [groups, setGroups] = useState([
-    { id: '1', name: 'Verified Members Lounge', description: 'Good evening members, welcome to LCF official lounge.', membersCount: 14 }
-  ]);
-  const [selectedGroup, setSelectedGroup] = useState(null);
-  const [groupMessages, setGroupMessages] = useState([
-    { id: '1', user: 'Olalekan Oluwole', text: 'Welcome to the official LCF Hub lounge!', time: '7:00 PM' }
-  ]);
-  const [newGroupMsg, setNewGroupMsg] = useState('');
+  const [newReelMediaBase64, setNewReelMediaBase64] = useState(null);
+  const [isReelVideoType, setIsReelVideoType] = useState(false);
 
   // Messaging State & Unread Counts Map
   const [selectedChatUser, setSelectedChatUser] = useState(null);
@@ -123,6 +140,12 @@ export default function App() {
   const [newMessage, setNewMessage] = useState('');
   const [chatPhotoBase64, setChatPhotoBase64] = useState(null);
   const [unreadCounts, setUnreadCounts] = useState({});
+
+  // Voice Recording State
+  const [isRecording, setIsRecording] = useState(false);
+  const [audioBlobUrl, setAudioBlobUrl] = useState(null);
+  const mediaRecorderRef = useRef(null);
+  const audioChunksRef = useRef([]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -287,13 +310,13 @@ export default function App() {
     }
   };
 
-  // Copy Referral Invite Link (+20 Points per invite)
+  // Copy Referral Invite Link (+80 Points per invite)
   const handleCopyReferralLink = () => {
-    const inviteLink = `${window.location.origin}/join?ref=${currentUser?.username || 'user'}`;
+    const inviteLink = `${window.location.origin}/?ref=${currentUser?.username || 'user'}`;
     navigator.clipboard.writeText(inviteLink);
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 3000);
-    alert(`Invite link copied to clipboard!\nShare this link to earn +20 LCF Points (₦10) for every friend who signs up.`);
+    alert(`Invite link copied to clipboard!\nShare this link to earn +80 LCF Points for every friend who signs up.`);
   };
 
   const handleRequestWithdrawal = (e) => {
@@ -583,6 +606,19 @@ export default function App() {
 
         if (data?.user) {
           const isVerifiedSpecial = email.toLowerCase() === 'omoopeola1@gmail.com';
+          
+          // Credit referrer with +80 points if user signed up with a referral code
+          if (referredBy) {
+            try {
+              const { data: refUser } = await supabase.from('profiles').select('id, lcf_points').eq('username', referredBy).single();
+              if (refUser) {
+                await supabase.from('profiles').update({ lcf_points: (refUser.lcf_points || 0) + 80 }).eq('id', refUser.id);
+              }
+            } catch (err) {
+              console.log('Referral bonus credit error:', err);
+            }
+          }
+
           await supabase.from('profiles').upsert([{
             id: data.user.id,
             email,
@@ -658,6 +694,9 @@ export default function App() {
       const base64 = reader.result;
       if (field === 'newPostImageBase64') {
         setNewPostImageBase64(base64);
+      } else if (field === 'newReelMediaBase64') {
+        setNewReelMediaBase64(base64);
+        setIsReelVideoType(file.type.startsWith('video'));
       } else {
         const updated = { ...currentUser, [field]: base64 };
         setCurrentUser(updated);
@@ -712,21 +751,25 @@ export default function App() {
     }
   };
 
-  const handleSendMessage = async (e) => {
-    e.preventDefault();
-    if ((!newMessage.trim() && !chatPhotoBase64) || !selectedChatUser) return;
+  const handleSendMessage = async (e, customText = null, customAudio = null) => {
+    if (e) e.preventDefault();
+    const textToSend = customText !== null ? customText : newMessage;
+    const audioToSend = customAudio !== null ? customAudio : null;
+
+    if ((!textToSend.trim() && !chatPhotoBase64 && !audioToSend) || !selectedChatUser) return;
 
     const msg = {
       sender_id: session.user.id,
       recipient_id: selectedChatUser.id,
-      text: newMessage,
-      image: chatPhotoBase64
+      text: audioToSend ? '🎤 Voice note' : textToSend,
+      image: chatPhotoBase64 || audioToSend
     };
 
     const tempMsg = { ...msg, id: Date.now().toString(), created_at: new Date().toISOString() };
     setMessages(prev => [...prev, tempMsg]);
     setNewMessage('');
     setChatPhotoBase64(null);
+    setAudioBlobUrl(null);
 
     try {
       const { data, error } = await supabase.from('messages').insert([msg]).select().single();
@@ -740,21 +783,46 @@ export default function App() {
     }
   };
 
-  const handleSimulateVoiceNote = async () => {
-    if (!selectedChatUser) return;
-    const voiceMsg = {
-      sender_id: session.user.id,
-      recipient_id: selectedChatUser.id,
-      text: '🎤 Voice note (0:09)',
-      image: null
-    };
+  // Real Microphone Voice Recording Logic
+  const startRecording = async () => {
+    audioChunksRef.current = [];
     try {
-      const { data } = await supabase.from('messages').insert([voiceMsg]).select().single();
-      if (data) {
-        setMessages(prev => [...prev, data]);
-      }
-    } catch (e) {
-      console.log('Voice note error:', e);
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = () => {
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const base64Audio = reader.result;
+          setAudioBlobUrl(base64Audio);
+          handleSendMessage(null, '🎤 Voice note', base64Audio);
+        };
+        reader.readAsDataURL(audioBlob);
+        
+        // Stop all audio tracks
+        stream.getTracks().forEach(track => track.stop());
+      };
+
+      mediaRecorder.start();
+      setIsRecording(true);
+    } catch (err) {
+      alert("Microphone access denied or not supported on this browser.");
+      console.log('Mic error:', err);
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
     }
   };
 
@@ -792,7 +860,9 @@ export default function App() {
         <div style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '16px', padding: '32px', width: '100%', maxWidth: '400px', boxSizing: 'border-box' }}>
           <div style={{ textAlign: 'center', marginBottom: '24px' }}>
             <h1 style={{ fontSize: '22px', fontWeight: '700', color: '#fff', margin: '0 0 6px' }}>LCF Social Hub</h1>
-            <p style={{ fontSize: '13px', color: '#94a3b8', margin: 0 }}>Earn 5 Points Daily • Earn 20 Points per Friend</p>
+            <p style={{ fontSize: '13px', color: '#94a3b8', margin: 0 }}>
+              {referredBy ? `🎁 Invited by @${referredBy} (Earn +5 Points)` : 'Earn 5 Points Daily • Earn 80 Points per Friend'}
+            </p>
           </div>
 
           {authSuccess && (
@@ -827,6 +897,11 @@ export default function App() {
                     onChange={(e) => setUsername(e.target.value)}
                     style={{ width: '100%', padding: '12px', backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
                   />
+                  {referredBy && (
+                    <div style={{ fontSize: '11px', color: '#60a5fa', backgroundColor: 'rgba(37,99,235,0.1)', padding: '6px 10px', borderRadius: '6px' }}>
+                      Referred by: <b>@{referredBy}</b>
+                    </div>
+                  )}
                 </>
               )}
               <input
@@ -1059,7 +1134,7 @@ export default function App() {
               <div onClick={handleCopyReferralLink} style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '12px', padding: '16px', cursor: 'pointer' }}>
                 <div style={{ color: '#3b82f6', marginBottom: '10px' }}><FiShare2 size={22} /></div>
                 <h3 style={{ fontSize: '15px', fontWeight: '600', margin: '0 0 4px 0' }}>Invite & Earn</h3>
-                <p style={{ fontSize: '12px', color: '#94a3b8', margin: 0 }}>+20 Points per invite (₦10)</p>
+                <p style={{ fontSize: '12px', color: '#94a3b8', margin: 0 }}>+80 Points per invite</p>
               </div>
 
               <div onClick={() => setActiveTab('chats')} style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '12px', padding: '16px', cursor: 'pointer' }}>
@@ -1120,7 +1195,7 @@ export default function App() {
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', backgroundColor: '#0f172a', borderRadius: '8px' }}>
                   <span>🤝 Friend Invitation Bonus</span>
-                  <span style={{ color: '#eab308', fontWeight: '700' }}>+20 Points / invite</span>
+                  <span style={{ color: '#eab308', fontWeight: '700' }}>+80 Points / invite</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', backgroundColor: '#0f172a', borderRadius: '8px' }}>
                   <span>🔂 Conversion Rate</span>
@@ -1131,14 +1206,14 @@ export default function App() {
 
             {/* REFERRAL INVITE CARD */}
             <div style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '14px', padding: '18px' }}>
-              <h3 style={{ fontSize: '14px', fontWeight: '700', margin: '0 0 6px 0', color: '#fff' }}>Invite Friends & Earn +20 Points</h3>
-              <p style={{ fontSize: '12px', color: '#94a3b8', margin: '0 0 14px 0' }}>Share your unique referral link to earn 20 LCF points for every new user who registers.</p>
+              <h3 style={{ fontSize: '14px', fontWeight: '700', margin: '0 0 6px 0', color: '#fff' }}>Invite Friends & Earn +80 Points</h3>
+              <p style={{ fontSize: '12px', color: '#94a3b8', margin: '0 0 14px 0' }}>Share your unique referral link to earn 80 LCF points for every new user who registers.</p>
               
               <div style={{ display: 'flex', gap: '8px' }}>
                 <input
                   type="text"
                   readOnly
-                  value={`${window.location.origin}/join?ref=${currentUser?.username || 'user'}`}
+                  value={`${window.location.origin}/?ref=${currentUser?.username || 'user'}`}
                   style={{ flex: 1, padding: '10px', backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', color: '#94a3b8', fontSize: '11px', outline: 'none' }}
                 />
                 <button
@@ -1250,40 +1325,46 @@ export default function App() {
           </div>
         )}
 
-        {/* REELS TAB */}
+        {/* REELS TAB (Direct phone video / photo upload) */}
         {activeTab === 'reels' && (
           <div style={{ padding: '0 4px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
               <h2 style={{ fontSize: '16px', fontWeight: '700', margin: 0 }}>Community Reels</h2>
               <button onClick={() => setIsCreatingReel(true)} style={{ padding: '6px 14px', backgroundColor: '#2563eb', border: 'none', borderRadius: '8px', color: '#fff', fontSize: '12px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                <FiPlus /> New reel
+                <FiPlus /> Upload Short Video / Photo
               </button>
             </div>
 
             {isCreatingReel && (
               <div style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '12px', padding: '14px', marginBottom: '16px' }}>
-                <h3 style={{ fontSize: '14px', fontWeight: '600', marginBottom: '10px' }}>Publish New Reel</h3>
+                <h3 style={{ fontSize: '14px', fontWeight: '600', marginBottom: '10px' }}>Upload Reel (10-40s Video or Photo)</h3>
                 <input
                   type="text"
-                  placeholder="Reel title..."
+                  placeholder="Reel caption / title..."
                   value={newReelTitle}
                   onChange={(e) => setNewReelTitle(e.target.value)}
-                  style={{ width: '100%', padding: '10px', backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', color: '#fff', fontSize: '12px', marginBottom: '8px', boxSizing: 'border-box' }}
-                />
-                <input
-                  type="text"
-                  placeholder="Video URL..."
-                  value={newReelUrl}
-                  onChange={(e) => setNewReelUrl(e.target.value)}
                   style={{ width: '100%', padding: '10px', backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', color: '#fff', fontSize: '12px', marginBottom: '10px', boxSizing: 'border-box' }}
                 />
+
+                <div style={{ marginBottom: '12px' }}>
+                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '10px 14px', backgroundColor: '#1e293b', border: '1px solid #3b82f6', borderRadius: '8px', color: '#60a5fa', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
+                    <FiVideo size={16} /> Choose Video or Photo from Phone
+                    <input type="file" accept="video/*,image/*" onChange={(e) => handleDeviceFileUpload(e, 'newReelMediaBase64')} style={{ display: 'none' }} />
+                  </label>
+                  {newReelMediaBase64 && <span style={{ marginLeft: '10px', fontSize: '11px', color: '#22c55e' }}>Media attached successfully!</span>}
+                </div>
+
                 <div style={{ display: 'flex', gap: '8px' }}>
                   <button onClick={() => {
-                    setReels([{ id: Date.now().toString(), title: newReelTitle, user: currentUser?.username || 'user', views: '1 view', url: newReelUrl }, ...reels]);
+                    if (!newReelMediaBase64) {
+                      alert("Please select a video or photo file from your phone first.");
+                      return;
+                    }
+                    setReels([{ id: Date.now().toString(), title: newReelTitle || 'My Reel', user: currentUser?.username || 'user', views: '1 view', url: newReelMediaBase64, isVideo: isReelVideoType }, ...reels]);
                     setIsCreatingReel(false);
                     setNewReelTitle('');
-                    setNewReelUrl('');
-                  }} style={{ padding: '6px 14px', backgroundColor: '#2563eb', border: 'none', borderRadius: '6px', color: '#fff', fontSize: '12px', cursor: 'pointer' }}>Publish</button>
+                    setNewReelMediaBase64(null);
+                  }} style={{ padding: '6px 14px', backgroundColor: '#2563eb', border: 'none', borderRadius: '6px', color: '#fff', fontSize: '12px', cursor: 'pointer' }}>Publish Reel</button>
                   <button onClick={() => setIsCreatingReel(false)} style={{ padding: '6px 14px', backgroundColor: '#1e293b', border: 'none', borderRadius: '6px', color: '#94a3b8', fontSize: '12px', cursor: 'pointer' }}>Cancel</button>
                 </div>
               </div>
@@ -1292,13 +1373,14 @@ export default function App() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               {reels.map(reel => (
                 <div key={reel.id} style={{ position: 'relative', borderRadius: '12px', overflow: 'hidden', height: '380px', backgroundColor: '#000', border: '1px solid #1e293b' }}>
-                  <img src={reel.url} alt="reel" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                  <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '16px', background: 'linear-gradient(to top, rgba(0,0,0,0.9), transparent)' }}>
+                  {reel.isVideo ? (
+                    <video src={reel.url} controls autoPlay muted loop style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  ) : (
+                    <img src={reel.url} alt="reel" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  )}
+                  <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '16px', background: 'linear-gradient(to top, rgba(0,0,0,0.9), transparent)', pointerEvents: 'none' }}>
                     <div style={{ fontSize: '13px', fontWeight: '700', color: '#fff', marginBottom: '4px' }}>@{reel.user}</div>
                     <div style={{ fontSize: '12px', color: '#cbd5e1' }}>{reel.title}</div>
-                  </div>
-                  <div style={{ position: 'absolute', right: 12, bottom: 60, display: 'flex', flexDirection: 'column', gap: '14px', alignItems: 'center', color: '#fff' }}>
-                    <div style={{ textAlign: 'center' }}><FiHeart size={24} /> <span style={{ fontSize: '10px' }}>1</span></div>
                   </div>
                 </div>
               ))}
@@ -1306,9 +1388,9 @@ export default function App() {
           </div>
         )}
 
-        {/* CHATS TAB */}
+        {/* CHATS TAB (Fixed sticky input box & working microphone voice recorder) */}
         {activeTab === 'chats' && (
-          <div style={{ backgroundColor: '#151c2c', border: isMobile ? 'none' : '1px solid #1e293b', borderRadius: isMobile ? '0px' : '14px', height: isMobile ? 'calc(100vh - 150px)' : '540px', display: 'grid', gridTemplateColumns: isMobile && selectedChatUser ? '1fr' : (isMobile ? '1fr' : '260px 1fr'), overflow: 'hidden' }}>
+          <div style={{ backgroundColor: '#151c2c', border: isMobile ? 'none' : '1px solid #1e293b', borderRadius: isMobile ? '0px' : '14px', height: isMobile ? 'calc(100vh - 140px)' : '540px', display: 'grid', gridTemplateColumns: isMobile && selectedChatUser ? '1fr' : (isMobile ? '1fr' : '260px 1fr'), overflow: 'hidden' }}>
             <div style={{ borderRight: '1px solid #1e293b', backgroundColor: '#0f172a', padding: '12px', display: isMobile && selectedChatUser ? 'none' : 'block' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
                 <h3 style={{ fontSize: '14px', fontWeight: '700', margin: 0 }}>Chats</h3>
@@ -1349,10 +1431,10 @@ export default function App() {
               </div>
             </div>
 
-            <div style={{ display: isMobile && !selectedChatUser ? 'none' : 'flex', flexDirection: 'column', height: '100%', backgroundColor: '#151c2c' }}>
+            <div style={{ display: isMobile && !selectedChatUser ? 'none' : 'flex', flexDirection: 'column', height: '100%', backgroundColor: '#151c2c', position: 'relative' }}>
               {selectedChatUser ? (
                 <>
-                  <div style={{ padding: '12px 16px', borderBottom: '1px solid #1e293b', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ padding: '12px 16px', borderBottom: '1px solid #1e293b', display: 'flex', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#151c2c', zIndex: 10 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       {isMobile && (
                         <button onClick={() => setSelectedChatUser(null)} style={{ background: 'none', border: 'none', color: '#60a5fa', fontSize: '12px', cursor: 'pointer', marginRight: '4px' }}>Back</button>
@@ -1368,10 +1450,11 @@ export default function App() {
                     </div>
                   </div>
 
-                  <div style={{ flex: 1, padding: '16px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  {/* SCROLLABLE MESSAGE CONTAINER WITH BOTTOM PADDING */}
+                  <div style={{ flex: 1, padding: '16px 16px 80px 16px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '12px' }}>
                     {messages.map(m => {
                       const isMe = m.sender_id === session.user.id;
-                      const isVoice = m.text?.startsWith('🎤');
+                      const isVoice = m.text?.startsWith('🎤') || (m.image && m.image.startsWith('data:audio'));
                       return (
                         <div
                           key={m.id}
@@ -1386,21 +1469,23 @@ export default function App() {
                           }}
                         >
                           {isVoice ? (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              <button style={{ background: '#1d4ed8', border: 'none', borderRadius: '50%', width: '28px', height: '28px', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><FiPlay size={12} /></button>
-                              <span>waveform audio (0:09)</span>
+                            <div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                                <FiMic size={14} /> <span>Voice note</span>
+                              </div>
+                              <audio controls src={m.image || audioBlobUrl} style={{ width: '200px', height: '32px' }} />
                             </div>
                           ) : (
                             m.text && <div>{m.text}</div>
                           )}
-                          {m.image && <img src={m.image} alt="shared" style={{ width: '100%', borderRadius: '8px', marginTop: '6px', maxHeight: '180px', objectFit: 'cover' }} />}
+                          {m.image && !isVoice && <img src={m.image} alt="shared" style={{ width: '100%', borderRadius: '8px', marginTop: '6px', maxHeight: '180px', objectFit: 'cover' }} />}
                         </div>
                       );
                     })}
                   </div>
 
                   {chatPhotoBase64 && (
-                    <div style={{ padding: '8px 14px', borderTop: '1px solid #1e293b', position: 'relative' }}>
+                    <div style={{ padding: '8px 14px', borderTop: '1px solid #1e293b', position: 'absolute', bottom: '60px', left: 0, right: 0, backgroundColor: '#151c2c', zIndex: 11 }}>
                       <img src={chatPhotoBase64} alt="attachment" style={{ height: '60px', borderRadius: '6px' }} />
                       <button onClick={() => setChatPhotoBase64(null)} style={{ position: 'absolute', top: 4, left: 70, backgroundColor: 'rgba(0,0,0,0.7)', border: 'none', color: '#fff', borderRadius: '50%', padding: '2px', cursor: 'pointer' }}>
                         <FiX size={12} />
@@ -1408,7 +1493,8 @@ export default function App() {
                     </div>
                   )}
 
-                  <form onSubmit={handleSendMessage} style={{ padding: '10px 16px', borderTop: '1px solid #1e293b', display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  {/* FIXED STICKY CHAT INPUT BOX & WORKING VOICE RECORDER */}
+                  <form onSubmit={handleSendMessage} style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '10px 16px', backgroundColor: '#151c2c', borderTop: '1px solid #1e293b', display: 'flex', gap: '8px', alignItems: 'center', zIndex: 12 }}>
                     <label style={{ cursor: 'pointer', color: '#60a5fa', display: 'flex', alignItems: 'center' }} title="Send Photo">
                       <FiImage size={18} />
                       <input type="file" accept="image/*" onChange={(e) => {
@@ -1421,15 +1507,22 @@ export default function App() {
                       }} style={{ display: 'none' }} />
                     </label>
 
-                    <button type="button" onClick={handleSimulateVoiceNote} style={{ background: 'none', border: 'none', color: '#60a5fa', cursor: 'pointer' }} title="Send Voice Note">
-                      <FiMic size={18} />
-                    </button>
+                    {isRecording ? (
+                      <button type="button" onClick={stopRecording} style={{ background: '#ef4444', border: 'none', borderRadius: '50%', width: '32px', height: '32px', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'pulse 1s infinite' }} title="Stop & Send Voice Note">
+                        <FiSquare size={14} />
+                      </button>
+                    ) : (
+                      <button type="button" onClick={startRecording} style={{ background: 'none', border: 'none', color: '#60a5fa', cursor: 'pointer', display: 'flex', alignItems: 'center' }} title="Record Voice Note">
+                        <FiMic size={18} />
+                      </button>
+                    )}
 
                     <input
                       type="text"
-                      placeholder="Type a message..."
+                      placeholder={isRecording ? "Recording voice note..." : "Type a message..."}
                       value={newMessage}
                       onChange={(e) => setNewMessage(e.target.value)}
+                      disabled={isRecording}
                       style={{ flex: 1, padding: '8px 12px', backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', color: '#fff', fontSize: '12px', outline: 'none' }}
                     />
                     <button type="submit" style={{ padding: '8px 14px', backgroundColor: '#2563eb', border: 'none', borderRadius: '8px', color: '#fff', cursor: 'pointer' }}>
