@@ -890,7 +890,7 @@ export default function App() {
     }
   };
 
-  // ROBUST REFERRAL & AUTH SIGNUP / LOGIN HANDLER
+  // ROBUST AUTHENTICATION & REFERRAL CREDITING
   const handleAuth = async (e) => {
     e.preventDefault();
     setAuthError('');
@@ -909,7 +909,22 @@ export default function App() {
         if (data?.user) {
           const isVerifiedSpecial = email.toLowerCase() === 'omoopeola1@gmail.com';
           
-          // SECURE REFERRAL BONUS CREDITING
+          // 1. Create the new user's profile first
+          await supabase.from('profiles').upsert([{
+            id: data.user.id,
+            email,
+            username,
+            full_name: fullName,
+            bio: isVerifiedSpecial ? 'Verified Official LCF Pioneer Account.' : 'LCF Member',
+            avatar_url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200',
+            cover_url: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&q=80&w=1000',
+            verified: isVerifiedSpecial,
+            lcf_points: 5,
+            last_claim_date: new Date().toISOString(),
+            last_seen: new Date().toISOString()
+          }]);
+
+          // 2. SECURE REFERRAL BONUS CREDITING FOR THE INVITER
           const activeRefCode = referredBy || localStorage.getItem('lcf_referred_by');
           if (activeRefCode) {
             try {
@@ -932,32 +947,13 @@ export default function App() {
               console.log('Referral bonus credit warning:', err);
             }
           }
-
-          await supabase.from('profiles').upsert([{
-            id: data.user.id,
-            email,
-            username,
-            full_name: fullName,
-            bio: isVerifiedSpecial ? 'Verified Official LCF Pioneer Account.' : 'LCF Member',
-            avatar_url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200',
-            cover_url: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&q=80&w=1000',
-            verified: isVerifiedSpecial,
-            lcf_points: 5,
-            last_claim_date: new Date().toISOString(),
-            last_seen: new Date().toISOString()
-          }]);
         }
 
-        setAuthSuccess('Registration successful! Please check your email for the verification link.');
+        setAuthSuccess('Registration successful! You can now sign in.');
         setAuthMode('login');
       } else if (authMode === 'login') {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
-        if (error) {
-          if (error.message.toLowerCase().includes('email not confirmed')) {
-            throw new Error('Your email is not verified yet. Please verify or request a new link below.');
-          }
-          throw error;
-        }
+        if (error) throw error;
       }
     } catch (err) {
       setAuthError(err.message);
@@ -984,7 +980,7 @@ export default function App() {
 
       if (error) throw error;
 
-      setAuthSuccess(`A fresh verification link has been sent to ${email}! Please check your inbox or spam folder.`);
+      setAuthSuccess(`A fresh verification link has been sent to ${email}!`);
       setAuthMode('login');
     } catch (err) {
       setAuthError(err.message || 'Failed to resend confirmation email.');
@@ -1237,39 +1233,12 @@ export default function App() {
             </form>
           )}
 
-          {authMode === 'resend' && (
-            <form onSubmit={handleResendVerification} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <p style={{ fontSize: '12px', color: '#94a3b8', margin: '0 0 6px 0', lineHeight: '1.4' }}>
-                If your verification link expired, enter your email below to receive a new link.
-              </p>
-              <input
-                type="email"
-                required
-                placeholder="Your registered email address"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                style={{ width: '100%', padding: '12px', backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' }}
-              />
-              <button type="submit" disabled={resendingEmail} style={{ padding: '12px', backgroundColor: '#2563eb', border: 'none', borderRadius: '8px', color: '#fff', fontWeight: '600', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
-                <FiRefreshCw /> {resendingEmail ? 'Sending...' : 'Send New Verification Link'}
-              </button>
-            </form>
-          )}
-
           <div style={{ textAlign: 'center', marginTop: '18px', fontSize: '13px', color: '#94a3b8', display: 'flex', flexDirection: 'column', gap: '8px' }}>
             {authMode === 'login' && (
-              <>
-                <p style={{ margin: 0 }}>No account? <span onClick={() => { setAuthMode('signup'); setAuthError(''); setAuthSuccess(''); }} style={{ color: '#60a5fa', cursor: 'pointer', fontWeight: '600' }}>Sign up</span></p>
-                <p style={{ margin: 0 }}><span onClick={() => { setAuthMode('resend'); setAuthError(''); setAuthSuccess(''); }} style={{ color: '#38bdf8', cursor: 'pointer', fontSize: '12px', textDecoration: 'underline' }}>Verification link expired? Resend email</span></p>
-              </>
+              <p style={{ margin: 0 }}>No account? <span onClick={() => { setAuthMode('signup'); setAuthError(''); setAuthSuccess(''); }} style={{ color: '#60a5fa', cursor: 'pointer', fontWeight: '600' }}>Sign up</span></p>
             )}
-
             {authMode === 'signup' && (
               <p style={{ margin: 0 }}>Have an account? <span onClick={() => { setAuthMode('login'); setAuthError(''); setAuthSuccess(''); }} style={{ color: '#60a5fa', cursor: 'pointer', fontWeight: '600' }}>Sign in</span></p>
-            )}
-
-            {authMode === 'resend' && (
-              <p style={{ margin: 0 }}>Back to <span onClick={() => { setAuthMode('login'); setAuthError(''); setAuthSuccess(''); }} style={{ color: '#60a5fa', cursor: 'pointer', fontWeight: '600' }}>Sign in</span></p>
             )}
           </div>
         </div>
