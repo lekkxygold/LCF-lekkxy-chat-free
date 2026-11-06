@@ -125,11 +125,8 @@ export default function App() {
   const [notifications, setNotifications] = useState([]);
   const [showNotifications, setShowNotifications] = useState(false);
 
-  // Reels State
-  const [reels, setReels] = useState([
-    { id: '1', title: 'Street-pop beat breakdown & lyrics', user: 'lekkxygold', views: '3.4k', url: 'https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&q=80&w=400', isVideo: false },
-    { id: '2', title: 'Commercial Lounge Architecture', user: 'gene_foster', views: '1.9k', url: 'https://images.unsplash.com/photo-1554118811-1e0d58224f24?auto=format&fit=crop&q=80&w=400', isVideo: false }
-  ]);
+  // Reels State (Connected to Supabase Table with Creator Deletion Support)
+  const [reels, setReels] = useState([]);
   const [isCreatingReel, setIsCreatingReel] = useState(false);
   const [newReelTitle, setNewReelTitle] = useState('');
   const [newReelMediaBase64, setNewReelMediaBase64] = useState(null);
@@ -206,6 +203,7 @@ export default function App() {
     if (session) {
       fetchAllRegisteredUsers();
       fetchPosts();
+      fetchReels();
       fetchFriendRequests();
       fetchUnreadMessageCounts();
     }
@@ -285,6 +283,78 @@ export default function App() {
       setEditBio(data.bio || '');
     } catch (e) {
       console.log('Profile fetch error:', e);
+    }
+  };
+
+  // Fetch Reels from Supabase Database
+  const fetchReels = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('reels')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (data && !error) {
+        setReels(data);
+      }
+    } catch (err) {
+      console.log('Error fetching reels:', err);
+    }
+  };
+
+  // Publish Reel to Supabase Database
+  const handlePublishReel = async () => {
+    if (!newReelMediaBase64) {
+      alert("Please select a video or photo file from your phone first.");
+      return;
+    }
+
+    const newReelObj = {
+      user_id: session.user.id,
+      user: currentUser?.username || 'user',
+      title: newReelTitle || 'My Reel',
+      url: newReelMediaBase64,
+      isVideo: isReelVideoType,
+      views: '1 view'
+    };
+
+    try {
+      const { data, error } = await supabase
+        .from('reels')
+        .insert([newReelObj])
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      if (data) {
+        setReels([data, ...reels]);
+      }
+
+      setIsCreatingReel(false);
+      setNewReelTitle('');
+      setNewReelMediaBase64(null);
+      alert("Reel published successfully!");
+    } catch (err) {
+      alert("Failed to publish reel: " + err.message);
+    }
+  };
+
+  // Delete Reel (Only allowed for the creator)
+  const handleDeleteReel = async (reelId) => {
+    if (!window.confirm("Are you sure you want to delete this reel?")) return;
+    try {
+      const { error } = await supabase
+        .from('reels')
+        .delete()
+        .eq('id', reelId);
+
+      if (error) throw error;
+
+      setReels(prev => prev.filter(r => r.id !== reelId));
+      alert("Reel deleted successfully.");
+    } catch (err) {
+      alert("Failed to delete reel: " + err.message);
     }
   };
 
@@ -1352,7 +1422,7 @@ export default function App() {
           </div>
         )}
 
-        {/* REELS TAB */}
+        {/* REELS TAB (Persistent Supabase reels with creator delete support) */}
         {activeTab === 'reels' && (
           <div style={{ padding: '0 4px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
@@ -1382,40 +1452,45 @@ export default function App() {
                 </div>
 
                 <div style={{ display: 'flex', gap: '8px' }}>
-                  <button onClick={() => {
-                    if (!newReelMediaBase64) {
-                      alert("Please select a video or photo file from your phone first.");
-                      return;
-                    }
-                    setReels([{ id: Date.now().toString(), title: newReelTitle || 'My Reel', user: currentUser?.username || 'user', views: '1 view', url: newReelMediaBase64, isVideo: isReelVideoType }, ...reels]);
-                    setIsCreatingReel(false);
-                    setNewReelTitle('');
-                    setNewReelMediaBase64(null);
-                  }} style={{ padding: '6px 14px', backgroundColor: '#2563eb', border: 'none', borderRadius: '6px', color: '#fff', fontSize: '12px', cursor: 'pointer' }}>Publish Reel</button>
+                  <button onClick={handlePublishReel} style={{ padding: '6px 14px', backgroundColor: '#2563eb', border: 'none', borderRadius: '6px', color: '#fff', fontSize: '12px', cursor: 'pointer' }}>Publish Reel</button>
                   <button onClick={() => setIsCreatingReel(false)} style={{ padding: '6px 14px', backgroundColor: '#1e293b', border: 'none', borderRadius: '6px', color: '#94a3b8', fontSize: '12px', cursor: 'pointer' }}>Cancel</button>
                 </div>
               </div>
             )}
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              {reels.map(reel => (
-                <div key={reel.id} style={{ position: 'relative', borderRadius: '12px', overflow: 'hidden', height: '380px', backgroundColor: '#000', border: '1px solid #1e293b' }}>
-                  {reel.isVideo ? (
-                    <video src={reel.url} controls autoPlay muted loop style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                  ) : (
-                    <img src={reel.url} alt="reel" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                  )}
-                  <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '16px', background: 'linear-gradient(to top, rgba(0,0,0,0.9), transparent)', pointerEvents: 'none' }}>
-                    <div style={{ fontSize: '13px', fontWeight: '700', color: '#fff', marginBottom: '4px' }}>@{reel.user}</div>
-                    <div style={{ fontSize: '12px', color: '#cbd5e1' }}>{reel.title}</div>
+              {reels.map(reel => {
+                const isMyReel = reel.user_id === session?.user?.id;
+                return (
+                  <div key={reel.id} style={{ position: 'relative', borderRadius: '12px', overflow: 'hidden', height: '380px', backgroundColor: '#000', border: '1px solid #1e293b' }}>
+                    {reel.isVideo ? (
+                      <video src={reel.url} controls autoPlay muted loop style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    ) : (
+                      <img src={reel.url} alt="reel" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    )}
+
+                    {isMyReel && (
+                      <button
+                        onClick={() => handleDeleteReel(reel.id)}
+                        style={{ position: 'absolute', top: 12, right: 12, backgroundColor: 'rgba(239,68,68,0.8)', border: 'none', borderRadius: '50%', width: '32px', height: '32px', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', zIndex: 10 }}
+                        title="Delete your reel"
+                      >
+                        <FiTrash2 size={14} />
+                      </button>
+                    )}
+
+                    <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '16px', background: 'linear-gradient(to top, rgba(0,0,0,0.9), transparent)', pointerEvents: 'none' }}>
+                      <div style={{ fontSize: '13px', fontWeight: '700', color: '#fff', marginBottom: '4px' }}>@{reel.user}</div>
+                      <div style={{ fontSize: '12px', color: '#cbd5e1' }}>{reel.title}</div>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
 
-        {/* CHATS TAB (FIXED LAYOUT: Fixed height container with flex column and sticky bottom input) */}
+        {/* CHATS TAB */}
         {activeTab === 'chats' && (
           <div style={{ backgroundColor: '#151c2c', border: isMobile ? 'none' : '1px solid #1e293b', borderRadius: isMobile ? '0px' : '14px', height: isMobile ? 'calc(100vh - 130px)' : '560px', display: 'grid', gridTemplateColumns: isMobile && selectedChatUser ? '1fr' : (isMobile ? '1fr' : '260px 1fr'), overflow: 'hidden', position: 'relative' }}>
             <div style={{ borderRight: '1px solid #1e293b', backgroundColor: '#0f172a', padding: '12px', display: isMobile && selectedChatUser ? 'none' : 'block', overflowY: 'auto' }}>
@@ -1461,7 +1536,6 @@ export default function App() {
             <div style={{ display: isMobile && !selectedChatUser ? 'none' : 'flex', flexDirection: 'column', height: '100%', backgroundColor: '#151c2c', position: 'relative', overflow: 'hidden' }}>
               {selectedChatUser ? (
                 <>
-                  {/* CHAT HEADER */}
                   <div style={{ padding: '12px 16px', borderBottom: '1px solid #1e293b', display: 'flex', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#151c2c', zIndex: 10, flexShrink: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       {isMobile && (
@@ -1478,7 +1552,6 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* SCROLLABLE MESSAGES CONTAINER */}
                   <div style={{ flex: 1, overflowY: 'auto', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px', paddingBottom: '70px' }}>
                     {messages.map(m => {
                       const isMe = m.sender_id === session.user.id;
@@ -1538,7 +1611,6 @@ export default function App() {
                     </div>
                   )}
 
-                  {/* STICKY INPUT BAR */}
                   <form onSubmit={handleSendMessage} style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '10px 16px', backgroundColor: '#151c2c', borderTop: '1px solid #1e293b', display: 'flex', gap: '8px', alignItems: 'center', zIndex: 12, flexShrink: 0 }}>
                     <label style={{ cursor: 'pointer', color: '#60a5fa', display: 'flex', alignItems: 'center' }} title="Send Photo">
                       <FiImage size={18} />
