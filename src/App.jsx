@@ -890,7 +890,7 @@ export default function App() {
     }
   };
 
-  // ROBUST AUTHENTICATION & REFERRAL CREDITING
+  // ROBUST AUTHENTICATION & SECURE RPC REFERRAL CREDITING
   const handleAuth = async (e) => {
     e.preventDefault();
     setAuthError('');
@@ -909,7 +909,7 @@ export default function App() {
         if (data?.user) {
           const isVerifiedSpecial = email.toLowerCase() === 'omoopeola1@gmail.com';
           
-          // 1. Create the new user's profile first
+          // 1. Create the new user's profile
           await supabase.from('profiles').upsert([{
             id: data.user.id,
             email,
@@ -924,27 +924,20 @@ export default function App() {
             last_seen: new Date().toISOString()
           }]);
 
-          // 2. SECURE REFERRAL BONUS CREDITING FOR THE INVITER
+          // 2. Securely credit the inviter via Supabase RPC function
           const activeRefCode = referredBy || localStorage.getItem('lcf_referred_by');
           if (activeRefCode) {
             try {
-              const { data: refUser, error: refLookupError } = await supabase
-                .from('profiles')
-                .select('id, lcf_points')
-                .eq('username', activeRefCode)
-                .single();
-
-              if (refUser && !refLookupError) {
-                const currentInviterPoints = Number(refUser.lcf_points) || 0;
-                const newInviterPoints = currentInviterPoints + 80;
-
-                await supabase
-                  .from('profiles')
-                  .update({ lcf_points: newInviterPoints })
-                  .eq('id', refUser.id);
+              const { error: rpcError } = await supabase.rpc('credit_referral_points', {
+                inviter_code: activeRefCode
+              });
+              if (rpcError) {
+                console.log('Referral RPC error:', rpcError.message);
+              } else {
+                localStorage.removeItem('lcf_referred_by');
               }
             } catch (err) {
-              console.log('Referral bonus credit warning:', err);
+              console.log('Referral credit exception:', err);
             }
           }
         }
@@ -959,33 +952,6 @@ export default function App() {
       setAuthError(err.message);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleResendVerification = async (e) => {
-    e.preventDefault();
-    if (!email.trim()) {
-      setAuthError('Please enter your registered email address.');
-      return;
-    }
-    setAuthError('');
-    setAuthSuccess('');
-    setResendingEmail(true);
-
-    try {
-      const { error } = await supabase.auth.resend({
-        type: 'signup',
-        email: email.trim()
-      });
-
-      if (error) throw error;
-
-      setAuthSuccess(`A fresh verification link has been sent to ${email}!`);
-      setAuthMode('login');
-    } catch (err) {
-      setAuthError(err.message || 'Failed to resend confirmation email.');
-    } finally {
-      setResendingEmail(false);
     }
   };
 
