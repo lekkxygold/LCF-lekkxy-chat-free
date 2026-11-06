@@ -32,7 +32,9 @@ import {
   FiCreditCard,
   FiCheck,
   FiCopy,
-  FiTrash2
+  FiTrash2,
+  FiVolume2,
+  FiVolumeX
 } from 'react-icons/fi';
 
 export default function App() {
@@ -124,9 +126,14 @@ export default function App() {
   const [notifications, setNotifications] = useState([]);
   const [showNotifications, setShowNotifications] = useState(false);
 
-  // Reels Interactive & Like State
+  // Reels State & Sound / Reel Comments
   const [reels, setReels] = useState([]);
   const [likedReelsMap, setLikedReelsMap] = useState({});
+  const [mutedReelsMap, setMutedReelsMap] = useState({});
+  const [openReelCommentsId, setOpenReelCommentsId] = useState(null);
+  const [reelCommentsMap, setReelCommentsMap] = useState({});
+  const [reelCommentInput, setReelCommentInput] = useState('');
+
   const [isCreatingReel, setIsCreatingReel] = useState(false);
   const [newReelTitle, setNewReelTitle] = useState('');
   const [newReelMediaBase64, setNewReelMediaBase64] = useState(null);
@@ -304,23 +311,75 @@ export default function App() {
 
       if (data && !error) {
         setReels(data);
+        data.forEach(r => fetchCommentsForReel(r.id));
       }
     } catch (err) {
       console.log('Error fetching reels:', err);
     }
   };
 
+  const fetchCommentsForReel = async (reelId) => {
+    try {
+      const { data } = await supabase
+        .from('reel_comments')
+        .select('*')
+        .eq('reel_id', reelId)
+        .order('created_at', { ascending: true });
+      if (data) {
+        setReelCommentsMap(prev => ({ ...prev, [reelId]: data }));
+      }
+    } catch (e) {
+      console.log('Reel comments fetch error:', e);
+    }
+  };
+
   const handleToggleReelLike = async (reel) => {
     const isLiked = likedReelsMap[reel.id];
-    const newLikesCount = isLiked ? Math.max(0, (reel.likes || 0) - 1) : (reel.likes || 0) + 1;
+    const currentLikes = Number(reel.likes) || 0;
+    const newLikesCount = isLiked ? Math.max(0, currentLikes - 1) : currentLikes + 1;
 
     setLikedReelsMap(prev => ({ ...prev, [reel.id]: !isLiked }));
     setReels(prev => prev.map(r => r.id === reel.id ? { ...r, likes: newLikesCount } : r));
 
     try {
-      await supabase.from('reels').update({ likes: newLikesCount }).eq('id', reel.id);
+      const { error } = await supabase
+        .from('reels')
+        .update({ likes: newLikesCount })
+        .eq('id', reel.id);
+
+      if (error) throw error;
     } catch (err) {
       console.log('Reel like update error:', err);
+    }
+  };
+
+  const handleToggleReelSound = (reelId) => {
+    setMutedReelsMap(prev => ({ ...prev, [reelId]: !prev[reelId] }));
+  };
+
+  const handleAddReelComment = async (reelId) => {
+    if (!reelCommentInput.trim()) return;
+
+    const newCommentObj = {
+      reel_id: reelId,
+      user_id: session.user.id,
+      user_name: currentUser?.full_name || 'You',
+      avatar: currentUser?.avatar_url,
+      comment: reelCommentInput.trim()
+    };
+
+    setReelCommentsMap(prev => ({
+      ...prev,
+      [reelId]: [...(prev[reelId] || []), { ...newCommentObj, id: Date.now() }]
+    }));
+    setReelCommentInput('');
+
+    try {
+      const { error } = await supabase.from('reel_comments').insert([newCommentObj]);
+      if (error) throw error;
+    } catch (e) {
+      console.log('Add reel comment error:', e);
+      alert('Failed to post comment: ' + e.message);
     }
   };
 
@@ -738,11 +797,23 @@ export default function App() {
         if (data?.user) {
           const isVerifiedSpecial = email.toLowerCase() === 'omoopeola1@gmail.com';
           
-          if (referredBy) {
+          const activeRefCode = referredBy || localStorage.getItem('lcf_referred_by');
+          if (activeRefCode) {
             try {
-              const { data: refUser } = await supabase.from('profiles').select('id, lcf_points').eq('username', referredBy).single();
-              if (refUser) {
-                await supabase.from('profiles').update({ lcf_points: (refUser.lcf_points || 0) + 80 }).eq('id', refUser.id);
+              const { data: refUser, error: refLookupError } = await supabase
+                .from('profiles')
+                .select('id, lcf_points')
+                .eq('username', activeRefCode)
+                .single();
+
+              if (refUser && !refLookupError) {
+                const currentInviterPoints = Number(refUser.lcf_points) || 0;
+                const newInviterPoints = currentInviterPoints + 80;
+
+                await supabase
+                  .from('profiles')
+                  .update({ lcf_points: newInviterPoints })
+                  .eq('id', refUser.id);
               }
             } catch (err) {
               console.log('Referral bonus credit error:', err);
@@ -1457,7 +1528,7 @@ export default function App() {
           </div>
         )}
 
-        {/* REELS TAB (FULL TIKTOK-STYLE IMMERSIVE VERTICAL FEED) */}
+        {/* REELS TAB (SOUND & FUNCTIONAL COMMENTS ENABLED) */}
         {activeTab === 'reels' && (
           <div style={{ position: 'relative', width: '100vw', height: 'calc(100vh - 60px)', backgroundColor: '#000', overflow: 'hidden' }}>
             <div style={{ position: 'absolute', top: 12, right: 12, zIndex: 50 }}>
@@ -1499,42 +1570,50 @@ export default function App() {
                 const isMyReel = reel.user_id === session?.user?.id;
                 const isLiked = likedReelsMap[reel.id];
                 const likesCount = reel.likes || (isLiked ? 1 : 0);
+                const isMuted = mutedReelsMap[reel.id] ?? false;
+                const comments = reelCommentsMap[reel.id] || [];
+                const isCommentsOpen = openReelCommentsId === reel.id;
 
                 return (
                   <div key={reel.id} style={{ position: 'relative', width: '100%', height: '100%', backgroundColor: '#000', scrollSnapAlign: 'start', scrollSnapStop: 'always' }}>
                     {reel.isvideo ? (
-                      <video src={reel.url} controls={false} autoPlay muted loop style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      <video src={reel.url} controls={false} autoPlay playsInline muted={isMuted} loop style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                     ) : (
                       <img src={reel.url} alt="reel" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                     )}
 
+                    {/* SOUND MUTE / UNMUTE TOGGLE BUTTON */}
+                    {reel.isvideo && (
+                      <button onClick={() => handleToggleReelSound(reel.id)} style={{ position: 'absolute', top: 16, left: 16, backgroundColor: 'rgba(0,0,0,0.5)', border: 'none', borderRadius: '50%', width: '36px', height: '36px', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', zIndex: 40 }}>
+                        {isMuted ? <FiVolumeX size={18} /> : <FiVolume2 size={18} />}
+                      </button>
+                    )}
+
                     {/* RIGHT TIKTOK ACTION SIDEBAR */}
                     <div style={{ position: 'absolute', right: 16, bottom: 90, display: 'flex', flexDirection: 'column', gap: '20px', alignItems: 'center', zIndex: 40 }}>
-                      {/* USER AVATAR BADGE */}
                       <div style={{ position: 'relative', marginBottom: '8px' }}>
                         <img src={currentUser?.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200'} alt="creator" style={{ width: '48px', height: '48px', borderRadius: '50%', border: '2px solid #fff', objectFit: 'cover' }} />
-                        <span style={{ position: 'absolute', bottom: -6, left: '50%', transform: 'translateX(-50%)', backgroundColor: '#ef4444', color: '#fff', fontSize: '10px', width: '18px', height: '18px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>+</span>
                       </div>
 
-                      {/* LIKE / HEART BUTTON */}
+                      {/* LIKE BUTTON */}
                       <button onClick={() => handleToggleReelLike(reel)} style={{ background: 'none', border: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', color: isLiked ? '#ef4444' : '#fff', cursor: 'pointer' }}>
                         <div style={{ backgroundColor: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(10px)', padding: '12px', borderRadius: '50%' }}>
                           <FiHeart size={26} fill={isLiked ? '#ef4444' : 'none'} />
                         </div>
                         <span style={{ fontSize: '12px', fontWeight: '700', marginTop: '4px', textShadow: '0 1px 3px rgba(0,0,0,0.8)' }}>
-                          {likesCount > 1000 ? `${(likesCount / 1000).toFixed(1)}K` : likesCount}
+                          {likesCount}
                         </span>
                       </button>
 
-                      {/* COMMENT BUTTON */}
-                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', color: '#fff', cursor: 'pointer' }}>
+                      {/* COMMENTS BUTTON */}
+                      <button onClick={() => setOpenReelCommentsId(isCommentsOpen ? null : reel.id)} style={{ background: 'none', border: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', color: '#fff', cursor: 'pointer' }}>
                         <div style={{ backgroundColor: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(10px)', padding: '12px', borderRadius: '50%' }}>
                           <FiMessageCircle size={26} />
                         </div>
                         <span style={{ fontSize: '12px', fontWeight: '700', marginTop: '4px', textShadow: '0 1px 3px rgba(0,0,0,0.8)' }}>
-                          {reel.views ? '12' : '0'}
+                          {comments.length}
                         </span>
-                      </div>
+                      </button>
 
                       {/* SHARE BUTTON */}
                       <button onClick={() => handleSharePost({ content: reel.title })} style={{ background: 'none', border: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', color: '#fff', cursor: 'pointer' }}>
@@ -1546,7 +1625,6 @@ export default function App() {
                         </span>
                       </button>
 
-                      {/* DELETE BUTTON FOR CREATOR */}
                       {isMyReel && (
                         <button onClick={() => handleDeleteReel(reel.id)} style={{ background: 'none', border: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', color: '#ef4444', cursor: 'pointer' }}>
                           <div style={{ backgroundColor: 'rgba(239,68,68,0.2)', backdropFilter: 'blur(10px)', padding: '10px', borderRadius: '50%' }}>
@@ -1556,13 +1634,46 @@ export default function App() {
                       )}
                     </div>
 
-                    {/* BOTTOM TEXT CAPTION OVERLAY */}
+                    {/* BOTTOM TEXT CAPTION */}
                     <div style={{ position: 'absolute', bottom: 80, left: 16, right: 80, zIndex: 40, pointerEvents: 'none', textShadow: '0 1px 4px rgba(0,0,0,0.9)' }}>
-                      <div style={{ fontSize: '15px', fontWeight: '700', color: '#fff', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        @{reel.user} ✨
-                      </div>
+                      <div style={{ fontSize: '15px', fontWeight: '700', color: '#fff', marginBottom: '6px' }}>@{reel.user}</div>
                       <div style={{ fontSize: '13px', color: '#f1f5f9', lineHeight: '1.4' }}>{reel.title}</div>
                     </div>
+
+                    {/* REEL COMMENTS MODAL / DRAWER */}
+                    {isCommentsOpen && (
+                      <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '60%', backgroundColor: '#151c2c', borderTopLeftRadius: '20px', borderTopRightRadius: '20px', zIndex: 100, display: 'flex', flexDirection: 'column', padding: '16px', boxSizing: 'border-box' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #1e293b', paddingBottom: '10px', marginBottom: '12px' }}>
+                          <h4 style={{ fontSize: '14px', fontWeight: '700', margin: 0, color: '#fff' }}>Comments ({comments.length})</h4>
+                          <button onClick={() => setOpenReelCommentsId(null)} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer' }}><FiX size={18} /></button>
+                        </div>
+
+                        <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '12px' }}>
+                          {comments.map((c, i) => (
+                            <div key={c.id || i} style={{ backgroundColor: '#0f172a', padding: '10px 12px', borderRadius: '10px', fontSize: '12px' }}>
+                              <div style={{ fontWeight: '600', color: '#60a5fa', marginBottom: '2px' }}>{c.user_name}</div>
+                              <div style={{ color: '#e2e8f0' }}>{c.comment}</div>
+                            </div>
+                          ))}
+                          {comments.length === 0 && (
+                            <div style={{ textAlign: 'center', color: '#94a3b8', padding: '30px', fontSize: '12px' }}>No comments yet. Be the first to comment!</div>
+                          )}
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <input
+                            type="text"
+                            placeholder="Add a comment..."
+                            value={reelCommentInput}
+                            onChange={(e) => setReelCommentInput(e.target.value)}
+                            style={{ flex: 1, padding: '10px 14px', backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', color: '#fff', fontSize: '12px', outline: 'none' }}
+                          />
+                          <button onClick={() => handleAddReelComment(reel.id)} style={{ padding: '10px 16px', backgroundColor: '#2563eb', border: 'none', borderRadius: '8px', color: '#fff', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
+                            Post
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })}
