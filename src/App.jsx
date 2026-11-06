@@ -125,7 +125,7 @@ export default function App() {
   const [notifications, setNotifications] = useState([]);
   const [showNotifications, setShowNotifications] = useState(false);
 
-  // Reels State (Connected to Supabase Table)
+  // Reels State
   const [reels, setReels] = useState([]);
   const [isCreatingReel, setIsCreatingReel] = useState(false);
   const [newReelTitle, setNewReelTitle] = useState('');
@@ -145,6 +145,18 @@ export default function App() {
   const [audioBlobUrl, setAudioBlobUrl] = useState(null);
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
+
+  // Time Ago Formatter Helper
+  const formatTimeAgo = (dateString) => {
+    if (!dateString) return 'Just now';
+    const diffMinutes = Math.floor((new Date() - new Date(dateString)) / 60000);
+    if (diffMinutes < 1) return 'Just now';
+    if (diffMinutes < 60) return `${diffMinutes}m ago`;
+    const hours = Math.floor(diffMinutes / 60);
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.floor(hours / 24);
+    return `${days}d ago`;
+  };
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -286,7 +298,6 @@ export default function App() {
     }
   };
 
-  // Fetch Reels from Supabase Database
   const fetchReels = async () => {
     try {
       const { data, error } = await supabase
@@ -302,7 +313,6 @@ export default function App() {
     }
   };
 
-  // Publish Reel to Supabase Database (using lowercase 'isvideo' column)
   const handlePublishReel = async () => {
     if (!newReelMediaBase64) {
       alert("Please select a video or photo file from your phone first.");
@@ -340,7 +350,6 @@ export default function App() {
     }
   };
 
-  // Delete Reel (Only allowed for the creator)
   const handleDeleteReel = async (reelId) => {
     if (!window.confirm("Are you sure you want to delete this reel?")) return;
     try {
@@ -358,7 +367,6 @@ export default function App() {
     }
   };
 
-  // Claim Daily Sign-In Bonus (+5 Points)
   const handleClaimDailyBonus = async () => {
     if (!session || !currentUser) return;
     const now = new Date();
@@ -389,13 +397,25 @@ export default function App() {
     }
   };
 
-  // Copy Referral Invite Link (+80 Points per invite)
   const handleCopyReferralLink = () => {
     const inviteLink = `${window.location.origin}/?ref=${currentUser?.username || 'user'}`;
     navigator.clipboard.writeText(inviteLink);
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 3000);
     alert(`Invite link copied to clipboard!\nShare this link to earn +80 LCF Points for every friend who signs up.`);
+  };
+
+  const handleSharePost = (post) => {
+    if (navigator.share) {
+      navigator.share({
+        title: 'LCF Post',
+        text: post.content || 'Check out this post on LCF Social Hub',
+        url: window.location.href
+      }).catch(() => {});
+    } else {
+      navigator.clipboard.writeText(post.content || window.location.href);
+      alert('Post content or link copied to clipboard!');
+    }
   };
 
   const handleRequestWithdrawal = (e) => {
@@ -574,7 +594,6 @@ export default function App() {
     }
   };
 
-  // Real-time notifications and real-time unread counter subscription
   useEffect(() => {
     if (!session) return;
 
@@ -619,7 +638,6 @@ export default function App() {
     };
   }, [session, dbUsers, selectedChatUser]);
 
-  // Real-time Chat Room Subscription & Auto-clear unread badge
   useEffect(() => {
     if (!session || !selectedChatUser) return;
 
@@ -1140,28 +1158,28 @@ export default function App() {
             </button>
 
             {showNotifications && (
-              <div style={{ position: 'absolute', right: 0, top: '40px', width: '280px', backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '12px', boxShadow: '0 8px 24px rgba(0,0,0,0.5)', zIndex: 1000, overflow: 'hidden' }}>
-                <div style={{ padding: '10px 14px', borderBottom: '1px solid #1e293b', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ position: 'absolute', right: 0, top: '40px', width: '280px', backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '16px', boxShadow: '0 8px 24px rgba(0,0,0,0.5)', zIndex: 1000, overflow: 'hidden' }}>
+                <div style={{ padding: '12px 16px', borderBottom: '1px solid #1e293b', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontSize: '12px', fontWeight: '700' }}>Notifications & Requests</span>
                   <button onClick={() => setNotifications([])} style={{ background: 'none', border: 'none', color: '#60a5fa', fontSize: '11px', cursor: 'pointer' }}>Clear all</button>
                 </div>
 
                 <div style={{ maxHeight: '280px', overflowY: 'auto' }}>
                   {incomingRequests.map(req => (
-                    <div key={req.id} style={{ padding: '10px 14px', borderBottom: '1px solid #1e293b', backgroundColor: 'rgba(37,99,235,0.1)' }}>
+                    <div key={req.id} style={{ padding: '12px 16px', borderBottom: '1px solid #1e293b', backgroundColor: 'rgba(37,99,235,0.1)' }}>
                       <div style={{ fontSize: '12px', color: '#fff', fontWeight: '600', marginBottom: '6px' }}>
                         {req.sender?.full_name || 'A user'} sent you a friend request
                       </div>
                       <div style={{ display: 'flex', gap: '6px' }}>
                         <button
                           onClick={() => handleRespondFriendRequest(req.id, 'accepted')}
-                          style={{ flex: 1, padding: '4px', backgroundColor: '#22c55e', border: 'none', borderRadius: '4px', color: '#fff', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}
+                          style={{ flex: 1, padding: '4px', backgroundColor: '#22c55e', border: 'none', borderRadius: '6px', color: '#fff', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}
                         >
                           Accept
                         </button>
                         <button
                           onClick={() => handleRespondFriendRequest(req.id, 'declined')}
-                          style={{ flex: 1, padding: '4px', backgroundColor: '#ef4444', border: 'none', borderRadius: '4px', color: '#fff', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}
+                          style={{ flex: 1, padding: '4px', backgroundColor: '#ef4444', border: 'none', borderRadius: '6px', color: '#fff', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}
                         >
                           Decline
                         </button>
@@ -1170,7 +1188,7 @@ export default function App() {
                   ))}
 
                   {notifications.map((n, i) => (
-                    <div key={i} style={{ padding: '10px 14px', borderBottom: '1px solid rgba(30,41,59,0.5)', fontSize: '12px' }}>
+                    <div key={i} style={{ padding: '12px 16px', borderBottom: '1px solid rgba(30,41,59,0.5)', fontSize: '12px' }}>
                       <div style={{ color: '#fff', marginBottom: '2px' }}>{n.text}</div>
                       <div style={{ color: '#94a3b8', fontSize: '10px' }}>{n.time}</div>
                     </div>
@@ -1191,7 +1209,7 @@ export default function App() {
       </header>
 
       {/* MAIN CONTAINER */}
-      <main style={{ width: '100vw', maxWidth: '800px', margin: '0 auto', padding: isMobile ? '8px' : '16px', boxSizing: 'border-box' }}>
+      <main style={{ width: '100vw', maxWidth: '800px', margin: '0 auto', padding: isMobile ? '12px' : '20px', boxSizing: 'border-box' }}>
         
         {/* HOME DASHBOARD TAB */}
         {activeTab === 'home' && (
@@ -1203,7 +1221,7 @@ export default function App() {
             </div>
 
             {/* DAILY REWARD CLAIM BANNER */}
-            <div style={{ background: 'linear-gradient(135deg, #1e3a8a, #1d4ed8)', border: '1px solid #3b82f6', borderRadius: '14px', padding: '18px', marginBottom: '20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+            <div style={{ background: 'linear-gradient(135deg, #1e3a8a, #1d4ed8)', border: '1px solid #3b82f6', borderRadius: '16px', padding: '18px', marginBottom: '20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#eab308', fontWeight: 'bold', fontSize: '14px', marginBottom: '4px' }}>
                   <FiGift /> Daily Login Reward
@@ -1222,25 +1240,25 @@ export default function App() {
 
             {/* QUICK ACTIONS GRID */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px' }}>
-              <div onClick={() => setActiveTab('wallet')} style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '12px', padding: '16px', cursor: 'pointer' }}>
+              <div onClick={() => setActiveTab('wallet')} style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '16px', padding: '18px', cursor: 'pointer' }}>
                 <div style={{ color: '#eab308', marginBottom: '10px' }}><FiGift size={22} /></div>
                 <h3 style={{ fontSize: '15px', fontWeight: '600', margin: '0 0 4px 0' }}>LCF Wallet</h3>
                 <p style={{ fontSize: '12px', color: '#94a3b8', margin: 0 }}>{lcfPoints} PTS (₦{((lcfPoints / 2000) * 1000).toLocaleString()})</p>
               </div>
 
-              <div onClick={handleCopyReferralLink} style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '12px', padding: '16px', cursor: 'pointer' }}>
+              <div onClick={handleCopyReferralLink} style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '16px', padding: '18px', cursor: 'pointer' }}>
                 <div style={{ color: '#3b82f6', marginBottom: '10px' }}><FiShare2 size={22} /></div>
                 <h3 style={{ fontSize: '15px', fontWeight: '600', margin: '0 0 4px 0' }}>Invite & Earn</h3>
                 <p style={{ fontSize: '12px', color: '#94a3b8', margin: 0 }}>+80 Points per invite</p>
               </div>
 
-              <div onClick={() => setActiveTab('chats')} style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '12px', padding: '16px', cursor: 'pointer' }}>
+              <div onClick={() => setActiveTab('chats')} style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '16px', padding: '18px', cursor: 'pointer' }}>
                 <div style={{ color: '#3b82f6', marginBottom: '10px' }}><FiMessageSquare size={22} /></div>
                 <h3 style={{ fontSize: '15px', fontWeight: '600', margin: '0 0 4px 0' }}>Chats</h3>
                 <p style={{ fontSize: '12px', color: '#94a3b8', margin: 0 }}>Real-time private messaging</p>
               </div>
 
-              <div onClick={() => setActiveTab('friends')} style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '12px', padding: '16px', cursor: 'pointer' }}>
+              <div onClick={() => setActiveTab('friends')} style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '16px', padding: '18px', cursor: 'pointer' }}>
                 <div style={{ color: '#3b82f6', marginBottom: '10px' }}><FiUsers size={22} /></div>
                 <h3 style={{ fontSize: '15px', fontWeight: '600', margin: '0 0 4px 0' }}>Find Friends</h3>
                 <p style={{ fontSize: '12px', color: '#94a3b8', margin: 0 }}>Search community directory</p>
@@ -1282,19 +1300,19 @@ export default function App() {
             </div>
 
             {/* EARNING RULES CARD */}
-            <div style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '14px', padding: '18px', marginBottom: '20px' }}>
+            <div style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '16px', padding: '18px', marginBottom: '20px' }}>
               <h3 style={{ fontSize: '14px', fontWeight: '700', margin: '0 0 12px 0', color: '#60a5fa' }}>⚡ Points & Earnings Conversion Table</h3>
               
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '12px', color: '#cbd5e1' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', backgroundColor: '#0f172a', borderRadius: '8px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 14px', backgroundColor: '#0f172a', borderRadius: '8px' }}>
                   <span>🎁 Daily Sign-In Bonus</span>
                   <span style={{ color: '#eab308', fontWeight: '700' }}>+5 Points / day</span>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', backgroundColor: '#0f172a', borderRadius: '8px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 14px', backgroundColor: '#0f172a', borderRadius: '8px' }}>
                   <span>🤝 Friend Invitation Bonus</span>
                   <span style={{ color: '#eab308', fontWeight: '700' }}>+80 Points / invite</span>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', backgroundColor: '#0f172a', borderRadius: '8px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 14px', backgroundColor: '#0f172a', borderRadius: '8px' }}>
                   <span>🔂 Conversion Rate</span>
                   <span style={{ color: '#22c55e', fontWeight: '700' }}>2,000 Points = ₦1,000 Naira</span>
                 </div>
@@ -1302,7 +1320,7 @@ export default function App() {
             </div>
 
             {/* REFERRAL INVITE CARD */}
-            <div style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '14px', padding: '18px' }}>
+            <div style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '16px', padding: '18px' }}>
               <h3 style={{ fontSize: '14px', fontWeight: '700', margin: '0 0 6px 0', color: '#fff' }}>Invite Friends & Earn +80 Points</h3>
               <p style={{ fontSize: '12px', color: '#94a3b8', margin: '0 0 14px 0' }}>Share your unique referral link to earn 80 LCF points for every new user who registers.</p>
               
@@ -1327,9 +1345,9 @@ export default function App() {
         {/* FEED TAB */}
         {activeTab === 'feed' && (
           <div>
-            <div style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: isMobile ? '0px' : '12px', padding: '14px', marginBottom: '16px' }}>
-              <div style={{ display: 'flex', gap: '10px' }}>
-                <img src={currentUser?.avatar_url} alt="avatar" style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover' }} />
+            <div style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: isMobile ? '0px' : '16px', padding: '16px', marginBottom: '16px' }}>
+              <div style={{ display: 'flex', gap: '12px' }}>
+                <img src={currentUser?.avatar_url} alt="avatar" style={{ width: '40px', height: '40px', borderRadius: '50%', objectFit: 'cover' }} />
                 <textarea
                   rows={2}
                   value={newPostText}
@@ -1341,20 +1359,20 @@ export default function App() {
 
               {newPostImageBase64 && (
                 <div style={{ position: 'relative', marginTop: '10px' }}>
-                  <img src={newPostImageBase64} alt="preview" style={{ width: '100%', maxHeight: '200px', objectFit: 'cover', borderRadius: '8px' }} />
-                  <button onClick={() => setNewPostImageBase64(null)} style={{ position: 'absolute', top: 6, right: 6, backgroundColor: 'rgba(0,0,0,0.7)', border: 'none', color: '#fff', borderRadius: '50%', padding: '4px', cursor: 'pointer' }}>
+                  <img src={newPostImageBase64} alt="preview" style={{ width: '100%', maxHeight: '220px', objectFit: 'cover', borderRadius: '12px' }} />
+                  <button onClick={() => setNewPostImageBase64(null)} style={{ position: 'absolute', top: 8, right: 8, backgroundColor: 'rgba(0,0,0,0.7)', border: 'none', color: '#fff', borderRadius: '50%', padding: '6px', cursor: 'pointer' }}>
                     <FiX size={14} />
                   </button>
                 </div>
               )}
 
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '10px', paddingTop: '10px', borderTop: '1px solid #1e293b' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '12px', paddingTop: '12px', borderTop: '1px solid #1e293b' }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#60a5fa', fontSize: '12px', cursor: 'pointer' }}>
                   <FiImage size={16} /> Photo
                   <input type="file" accept="image/*" onChange={(e) => handleDeviceFileUpload(e, 'newPostImageBase64')} style={{ display: 'none' }} />
                 </label>
 
-                <button onClick={handleCreatePost} style={{ padding: '6px 16px', backgroundColor: '#2563eb', border: 'none', borderRadius: '16px', color: '#fff', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
+                <button onClick={handleCreatePost} style={{ padding: '8px 18px', backgroundColor: '#2563eb', border: 'none', borderRadius: '20px', color: '#fff', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
                   Post
                 </button>
               </div>
@@ -1364,53 +1382,58 @@ export default function App() {
               const comments = postCommentsMap[post.id] || [];
               const isCommentsOpen = openCommentsPostId === post.id;
               return (
-                <div key={post.id} style={{ backgroundColor: '#151c2c', border: isMobile ? 'none' : '1px solid #1e293b', borderBottom: '1px solid #1e293b', borderRadius: isMobile ? '0px' : '12px', padding: '16px', marginBottom: '14px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
-                    <img src={post.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200'} alt="u" style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover' }} />
-                    <div>
-                      <div style={{ fontSize: '13px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        {post.user_name}
-                        {post.verified && <FiCheckCircle size={13} color="#3b82f6" title="Verified" />}
+                <div key={post.id} style={{ backgroundColor: '#151c2c', border: isMobile ? 'none' : '1px solid #1e293b', borderBottom: '1px solid #1e293b', borderRadius: isMobile ? '0px' : '16px', padding: '18px', marginBottom: '16px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'between', marginBottom: '12px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1 }}>
+                      <img src={post.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200'} alt="u" style={{ width: '40px', height: '40px', borderRadius: '50%', objectFit: 'cover' }} />
+                      <div>
+                        <div style={{ fontSize: '13px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          {post.user_name}
+                          {post.verified && <FiCheckCircle size={13} color="#3b82f6" title="Verified" />}
+                        </div>
+                        <div style={{ fontSize: '11px', color: '#94a3b8' }}>@{post.username} • {formatTimeAgo(post.created_at)}</div>
                       </div>
-                      <div style={{ fontSize: '11px', color: '#94a3b8' }}>@{post.username}</div>
                     </div>
                   </div>
 
-                  <p style={{ fontSize: '13px', lineHeight: '1.4', color: '#e2e8f0', margin: '0 0 10px 0' }}>{post.content}</p>
+                  <p style={{ fontSize: '13px', lineHeight: '1.5', color: '#e2e8f0', margin: '0 0 12px 0' }}>{post.content}</p>
 
                   {post.image && (
-                    <img src={post.image} alt="media" style={{ width: '100%', maxHeight: '350px', objectFit: 'cover', borderRadius: '8px', marginBottom: '10px' }} />
+                    <img src={post.image} alt="media" style={{ width: '100%', maxHeight: '380px', objectFit: 'cover', borderRadius: '12px', marginBottom: '12px' }} />
                   )}
 
-                  <div style={{ display: 'flex', gap: '16px', borderTop: '1px solid #1e293b', paddingTop: '10px', color: '#94a3b8', fontSize: '12px' }}>
-                    <button onClick={() => handleToggleLike(post)} style={{ background: 'none', border: 'none', color: likedPosts[post.id] ? '#ef4444' : '#94a3b8', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
-                      <FiHeart fill={likedPosts[post.id] ? '#ef4444' : 'none'} /> {post.likes || 0}
+                  <div style={{ display: 'flex', gap: '20px', borderTop: '1px solid #1e293b', paddingTop: '12px', color: '#94a3b8', fontSize: '12px' }}>
+                    <button onClick={() => handleToggleLike(post)} style={{ background: 'none', border: 'none', color: likedPosts[post.id] ? '#ef4444' : '#94a3b8', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                      <FiHeart fill={likedPosts[post.id] ? '#ef4444' : 'none'} size={15} /> {post.likes || 0}
                     </button>
-                    <button onClick={() => setOpenCommentsPostId(isCommentsOpen ? null : post.id)} style={{ background: 'none', border: 'none', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
-                      <FiMessageCircle /> {comments.length}
+                    <button onClick={() => setOpenCommentsPostId(isCommentsOpen ? null : post.id)} style={{ background: 'none', border: 'none', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                      <FiMessageCircle size={15} /> {comments.length}
+                    </button>
+                    <button onClick={() => handleSharePost(post)} style={{ background: 'none', border: 'none', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', marginLeft: 'auto' }}>
+                      <FiShare2 size={15} /> Share
                     </button>
                   </div>
 
                   {isCommentsOpen && (
-                    <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid #1e293b' }}>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '10px', maxHeight: '180px', overflowY: 'auto' }}>
+                    <div style={{ marginTop: '14px', paddingTop: '14px', borderTop: '1px solid #1e293b' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '12px', maxHeight: '200px', overflowY: 'auto' }}>
                         {comments.map((c, i) => (
-                          <div key={c.id || i} style={{ backgroundColor: '#0f172a', padding: '8px 12px', borderRadius: '8px', fontSize: '12px' }}>
+                          <div key={c.id || i} style={{ backgroundColor: '#0f172a', padding: '10px 14px', borderRadius: '10px', fontSize: '12px' }}>
                             <span style={{ fontWeight: '600', color: '#60a5fa', marginRight: '6px' }}>{c.user_name}:</span>
                             <span style={{ color: '#e2e8f0' }}>{c.comment}</span>
                           </div>
                         ))}
                       </div>
 
-                      <div style={{ display: 'flex', gap: '6px' }}>
+                      <div style={{ display: 'flex', gap: '8px' }}>
                         <input
                           type="text"
                           placeholder="Write a comment..."
                           value={commentInputMap[post.id] || ''}
                           onChange={(e) => setCommentInputMap({ ...commentInputMap, [post.id]: e.target.value })}
-                          style={{ flex: 1, padding: '8px 12px', backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '6px', color: '#fff', fontSize: '12px', outline: 'none' }}
+                          style={{ flex: 1, padding: '10px 14px', backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', color: '#fff', fontSize: '12px', outline: 'none' }}
                         />
-                        <button onClick={() => handleAddComment(post.id)} style={{ padding: '8px 14px', backgroundColor: '#2563eb', border: 'none', borderRadius: '6px', color: '#fff', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
+                        <button onClick={() => handleAddComment(post.id)} style={{ padding: '10px 16px', backgroundColor: '#2563eb', border: 'none', borderRadius: '8px', color: '#fff', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
                           Comment
                         </button>
                       </div>
@@ -1422,47 +1445,48 @@ export default function App() {
           </div>
         )}
 
-        {/* REELS TAB */}
+        {/* REELS TAB (Smooth Vertical Snap Scrolling, Video Uploads & Engagement Counters) */}
         {activeTab === 'reels' && (
           <div style={{ padding: '0 4px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
               <h2 style={{ fontSize: '16px', fontWeight: '700', margin: 0 }}>Community Reels</h2>
-              <button onClick={() => setIsCreatingReel(true)} style={{ padding: '6px 14px', backgroundColor: '#2563eb', border: 'none', borderRadius: '8px', color: '#fff', fontSize: '12px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <button onClick={() => setIsCreatingReel(true)} style={{ padding: '8px 16px', backgroundColor: '#2563eb', border: 'none', borderRadius: '20px', color: '#fff', fontSize: '12px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <FiPlus /> Upload Short Video / Photo
               </button>
             </div>
 
             {isCreatingReel && (
-              <div style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '12px', padding: '14px', marginBottom: '16px' }}>
-                <h3 style={{ fontSize: '14px', fontWeight: '600', marginBottom: '10px' }}>Upload Reel (10-40s Video or Photo)</h3>
+              <div style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '16px', padding: '16px', marginBottom: '20px' }}>
+                <h3 style={{ fontSize: '14px', fontWeight: '600', marginBottom: '12px' }}>Upload Reel (10-40s Video or Photo)</h3>
                 <input
                   type="text"
                   placeholder="Reel caption / title..."
                   value={newReelTitle}
                   onChange={(e) => setNewReelTitle(e.target.value)}
-                  style={{ width: '100%', padding: '10px', backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', color: '#fff', fontSize: '12px', marginBottom: '10px', boxSizing: 'border-box' }}
+                  style={{ width: '100%', padding: '12px', backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', color: '#fff', fontSize: '12px', marginBottom: '12px', boxSizing: 'border-box' }}
                 />
 
-                <div style={{ marginBottom: '12px' }}>
-                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '10px 14px', backgroundColor: '#1e293b', border: '1px solid #3b82f6', borderRadius: '8px', color: '#60a5fa', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
+                <div style={{ marginBottom: '14px' }}>
+                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '10px 16px', backgroundColor: '#1e293b', border: '1px solid #3b82f6', borderRadius: '8px', color: '#60a5fa', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
                     <FiVideo size={16} /> Choose Video or Photo from Phone
                     <input type="file" accept="video/*,image/*" onChange={(e) => handleDeviceFileUpload(e, 'newReelMediaBase64')} style={{ display: 'none' }} />
                   </label>
-                  {newReelMediaBase64 && <span style={{ marginLeft: '10px', fontSize: '11px', color: '#22c55e' }}>Media attached successfully!</span>}
+                  {newReelMediaBase64 && <span style={{ marginLeft: '12px', fontSize: '11px', color: '#22c55e' }}>Media attached successfully!</span>}
                 </div>
 
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <button onClick={handlePublishReel} style={{ padding: '6px 14px', backgroundColor: '#2563eb', border: 'none', borderRadius: '6px', color: '#fff', fontSize: '12px', cursor: 'pointer' }}>Publish Reel</button>
-                  <button onClick={() => setIsCreatingReel(false)} style={{ padding: '6px 14px', backgroundColor: '#1e293b', border: 'none', borderRadius: '6px', color: '#94a3b8', fontSize: '12px', cursor: 'pointer' }}>Cancel</button>
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <button onClick={handlePublishReel} style={{ padding: '8px 16px', backgroundColor: '#2563eb', border: 'none', borderRadius: '8px', color: '#fff', fontSize: '12px', cursor: 'pointer' }}>Publish Reel</button>
+                  <button onClick={() => setIsCreatingReel(false)} style={{ padding: '8px 16px', backgroundColor: '#1e293b', border: 'none', borderRadius: '8px', color: '#94a3b8', fontSize: '12px', cursor: 'pointer' }}>Cancel</button>
                 </div>
               </div>
             )}
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            {/* REELS VERTICAL SNAP SCROLL CONTAINER */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', height: 'calc(100vh - 180px)', overflowY: 'scroll', scrollSnapType: 'y mandatory', scrollbarWidth: 'none', paddingBottom: '40px' }}>
               {reels.map(reel => {
                 const isMyReel = reel.user_id === session?.user?.id;
                 return (
-                  <div key={reel.id} style={{ position: 'relative', borderRadius: '12px', overflow: 'hidden', height: '380px', backgroundColor: '#000', border: '1px solid #1e293b' }}>
+                  <div key={reel.id} style={{ position: 'relative', borderRadius: '16px', overflow: 'hidden', height: '420px', minHeight: '420px', backgroundColor: '#000', border: '1px solid #1e293b', scrollSnapAlign: 'start', scrollSnapStop: 'always', flexShrink: 0 }}>
                     {reel.isvideo ? (
                       <video src={reel.url} controls autoPlay muted loop style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                     ) : (
@@ -1472,15 +1496,27 @@ export default function App() {
                     {isMyReel && (
                       <button
                         onClick={() => handleDeleteReel(reel.id)}
-                        style={{ position: 'absolute', top: 12, right: 12, backgroundColor: 'rgba(239,68,68,0.8)', border: 'none', borderRadius: '50%', width: '32px', height: '32px', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', zIndex: 10 }}
+                        style={{ position: 'absolute', top: 14, right: 14, backgroundColor: 'rgba(239,68,68,0.85)', border: 'none', borderRadius: '50%', width: '36px', height: '36px', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', zIndex: 10 }}
                         title="Delete your reel"
                       >
-                        <FiTrash2 size={14} />
+                        <FiTrash2 size={15} />
                       </button>
                     )}
 
-                    <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '16px', background: 'linear-gradient(to top, rgba(0,0,0,0.9), transparent)', pointerEvents: 'none' }}>
-                      <div style={{ fontSize: '13px', fontWeight: '700', color: '#fff', marginBottom: '4px' }}>@{reel.user}</div>
+                    {/* ENGAGEMENT COUNTERS OVERLAY */}
+                    <div style={{ position: 'absolute', right: 14, bottom: 80, display: 'flex', flexDirection: 'column', gap: '14px', alignItems: 'center', zIndex: 10 }}>
+                      <div style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)', padding: '10px', borderRadius: '50%', display: 'flex', flexDirection: 'column', alignItems: 'center', color: '#fff', cursor: 'pointer' }}>
+                        <FiHeart size={20} />
+                        <span style={{ fontSize: '10px', marginTop: '2px' }}>128</span>
+                      </div>
+                      <div style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)', padding: '10px', borderRadius: '50%', display: 'flex', flexDirection: 'column', alignItems: 'center', color: '#fff' }}>
+                        <FiVideo size={20} />
+                        <span style={{ fontSize: '10px', marginTop: '2px' }}>{reel.views || '1v'}</span>
+                      </div>
+                    </div>
+
+                    <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '20px 16px', background: 'linear-gradient(to top, rgba(0,0,0,0.95), transparent)', pointerEvents: 'none' }}>
+                      <div style={{ fontSize: '14px', fontWeight: '700', color: '#fff', marginBottom: '4px' }}>@{reel.user}</div>
                       <div style={{ fontSize: '12px', color: '#cbd5e1' }}>{reel.title}</div>
                     </div>
                   </div>
@@ -1492,30 +1528,30 @@ export default function App() {
 
         {/* CHATS TAB */}
         {activeTab === 'chats' && (
-          <div style={{ backgroundColor: '#151c2c', border: isMobile ? 'none' : '1px solid #1e293b', borderRadius: isMobile ? '0px' : '14px', height: isMobile ? 'calc(100vh - 130px)' : '560px', display: 'grid', gridTemplateColumns: isMobile && selectedChatUser ? '1fr' : (isMobile ? '1fr' : '260px 1fr'), overflow: 'hidden', position: 'relative' }}>
+          <div style={{ backgroundColor: '#151c2c', border: isMobile ? 'none' : '1px solid #1e293b', borderRadius: isMobile ? '0px' : '16px', height: isMobile ? 'calc(100vh - 130px)' : '580px', display: 'grid', gridTemplateColumns: isMobile && selectedChatUser ? '1fr' : (isMobile ? '1fr' : '280px 1fr'), overflow: 'hidden', position: 'relative' }}>
             <div style={{ borderRight: '1px solid #1e293b', backgroundColor: '#0f172a', padding: '12px', display: isMobile && selectedChatUser ? 'none' : 'block', overflowY: 'auto' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
                 <h3 style={{ fontSize: '14px', fontWeight: '700', margin: 0 }}>Chats</h3>
                 <span style={{ fontSize: '11px', color: '#94a3b8' }}>Private conversations</span>
               </div>
               
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 {dbUsers.filter(u => u.id !== session?.user?.id).map(user => {
                   const unreadCount = unreadCounts[user.id] || 0;
                   return (
                     <div
                       key={user.id}
                       onClick={() => setSelectedChatUser(user)}
-                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', padding: '10px', borderRadius: '8px', backgroundColor: selectedChatUser?.id === user.id ? '#1e293b' : 'transparent', cursor: 'pointer' }}
+                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', padding: '10px 12px', borderRadius: '10px', backgroundColor: selectedChatUser?.id === user.id ? '#1e293b' : 'transparent', cursor: 'pointer' }}
                     >
                       <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, flex: 1 }}>
-                        <img src={user.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200'} alt="u" style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover' }} />
+                        <img src={user.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200'} alt="u" style={{ width: '38px', height: '38px', borderRadius: '50%', objectFit: 'cover' }} />
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ fontSize: '13px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '4px' }}>
                             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.full_name}</span>
-                            {user.verified && <FiCheckCircle size={10} color="#3b82f6" />}
+                            {user.verified && <FiCheckCircle size={11} color="#3b82f6" />}
                           </div>
-                          <div style={{ fontSize: '10px', color: '#94a3b8' }}>@{user.username}</div>
+                          <div style={{ fontSize: '11px', color: '#94a3b8' }}>@{user.username}</div>
                         </div>
                       </div>
 
@@ -1536,12 +1572,12 @@ export default function App() {
             <div style={{ display: isMobile && !selectedChatUser ? 'none' : 'flex', flexDirection: 'column', height: '100%', backgroundColor: '#151c2c', position: 'relative', overflow: 'hidden' }}>
               {selectedChatUser ? (
                 <>
-                  <div style={{ padding: '12px 16px', borderBottom: '1px solid #1e293b', display: 'flex', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#151c2c', zIndex: 10, flexShrink: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <div style={{ padding: '14px 18px', borderBottom: '1px solid #1e293b', display: 'flex', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#151c2c', zIndex: 10, flexShrink: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                       {isMobile && (
                         <button onClick={() => setSelectedChatUser(null)} style={{ background: 'none', border: 'none', color: '#60a5fa', fontSize: '12px', cursor: 'pointer', marginRight: '4px' }}>Back</button>
                       )}
-                      <img src={selectedChatUser.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200'} alt="u" style={{ width: '32px', height: '32px', borderRadius: '50%', objectFit: 'cover' }} />
+                      <img src={selectedChatUser.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200'} alt="u" style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover' }} />
                       <div>
                         <div style={{ fontSize: '13px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '4px' }}>
                           {selectedChatUser.full_name}
@@ -1611,7 +1647,7 @@ export default function App() {
                     </div>
                   )}
 
-                  <form onSubmit={handleSendMessage} style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '10px 16px', backgroundColor: '#151c2c', borderTop: '1px solid #1e293b', display: 'flex', gap: '8px', alignItems: 'center', zIndex: 12, flexShrink: 0 }}>
+                  <form onSubmit={handleSendMessage} style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '12px 18px', backgroundColor: '#151c2c', borderTop: '1px solid #1e293b', display: 'flex', gap: '10px', alignItems: 'center', zIndex: 12, flexShrink: 0 }}>
                     <label style={{ cursor: 'pointer', color: '#60a5fa', display: 'flex', alignItems: 'center' }} title="Send Photo">
                       <FiImage size={18} />
                       <input type="file" accept="image/*" onChange={(e) => {
@@ -1625,7 +1661,7 @@ export default function App() {
                     </label>
 
                     {isRecording ? (
-                      <button type="button" onClick={stopRecording} style={{ background: '#ef4444', border: 'none', borderRadius: '50%', width: '32px', height: '32px', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'pulse 1s infinite' }} title="Stop & Send Voice Note">
+                      <button type="button" onClick={stopRecording} style={{ background: '#ef4444', border: 'none', borderRadius: '50%', width: '34px', height: '34px', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'pulse 1s infinite' }} title="Stop & Send Voice Note">
                         <FiSquare size={14} />
                       </button>
                     ) : (
@@ -1640,9 +1676,9 @@ export default function App() {
                       value={newMessage}
                       onChange={(e) => setNewMessage(e.target.value)}
                       disabled={isRecording}
-                      style={{ flex: 1, padding: '8px 12px', backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', color: '#fff', fontSize: '12px', outline: 'none' }}
+                      style={{ flex: 1, padding: '10px 14px', backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', color: '#fff', fontSize: '12px', outline: 'none' }}
                     />
-                    <button type="submit" style={{ padding: '8px 14px', backgroundColor: '#2563eb', border: 'none', borderRadius: '8px', color: '#fff', cursor: 'pointer' }}>
+                    <button type="submit" style={{ padding: '10px 16px', backgroundColor: '#2563eb', border: 'none', borderRadius: '8px', color: '#fff', cursor: 'pointer' }}>
                       <FiSend />
                     </button>
                   </form>
@@ -1660,15 +1696,15 @@ export default function App() {
         {activeTab === 'friends' && (
           <div style={{ padding: '0 4px' }}>
             {incomingRequests.length > 0 && (
-              <div style={{ backgroundColor: '#151c2c', border: '1px solid #2563eb', borderRadius: '12px', padding: '16px', marginBottom: '20px' }}>
-                <h3 style={{ fontSize: '14px', fontWeight: '700', margin: '0 0 12px 0', color: '#60a5fa', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <div style={{ backgroundColor: '#151c2c', border: '1px solid #2563eb', borderRadius: '16px', padding: '18px', marginBottom: '20px' }}>
+                <h3 style={{ fontSize: '14px', fontWeight: '700', margin: '0 0 14px 0', color: '#60a5fa', display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <FiUserPlus /> Incoming Friend Requests ({incomingRequests.length})
                 </h3>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                   {incomingRequests.map(req => (
-                    <div key={req.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#0f172a', padding: '10px 14px', borderRadius: '8px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <img src={req.sender?.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200'} alt="u" style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover' }} />
+                    <div key={req.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#0f172a', padding: '12px 16px', borderRadius: '10px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <img src={req.sender?.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200'} alt="u" style={{ width: '38px', height: '38px', borderRadius: '50%', objectFit: 'cover' }} />
                         <div>
                           <div style={{ fontSize: '13px', fontWeight: '600' }}>{req.sender?.full_name || 'Member'}</div>
                           <div style={{ fontSize: '11px', color: '#94a3b8' }}>@{req.sender?.username}</div>
@@ -1700,7 +1736,7 @@ export default function App() {
             </div>
 
             <div style={{ position: 'relative', marginBottom: '16px' }}>
-              <FiSearch style={{ position: 'absolute', left: '12px', top: '12px', color: '#94a3b8', fontSize: '14px' }} />
+              <FiSearch style={{ position: 'absolute', left: '14px', top: '13px', color: '#94a3b8', fontSize: '14px' }} />
               <input
                 type="text"
                 placeholder="Search username or name..."
@@ -1710,24 +1746,24 @@ export default function App() {
                   setUserSearchQuery(val);
                   fetchAllRegisteredUsers(val);
                 }}
-                style={{ width: '100%', padding: '10px 10px 10px 36px', backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '10px', color: '#fff', fontSize: '13px', boxSizing: 'border-box', outline: 'none' }}
+                style={{ width: '100%', padding: '12px 12px 12px 40px', backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '12px', color: '#fff', fontSize: '13px', boxSizing: 'border-box', outline: 'none' }}
               />
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '14px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '16px' }}>
               {dbUsers.map(user => {
                 const reqStatus = sentRequestMap[user.id];
                 const isSelf = user.id === session?.user?.id;
                 return (
-                  <div key={user.id} style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '12px', padding: '16px', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
-                    <img src={user.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200'} alt="u" style={{ width: '64px', height: '64px', borderRadius: '50%', objectFit: 'cover', marginBottom: '10px' }} />
+                  <div key={user.id} style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '16px', padding: '18px', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
+                    <img src={user.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200'} alt="u" style={{ width: '64px', height: '64px', borderRadius: '50%', objectFit: 'cover', marginBottom: '12px' }} />
 
                     <div style={{ fontSize: '14px', fontWeight: '700', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', marginBottom: '2px' }}>
                       {user.full_name}
                       {user.verified && <FiCheckCircle size={13} color="#3b82f6" title="Verified Account" />}
                     </div>
                     <div style={{ fontSize: '11px', color: '#60a5fa', marginBottom: '8px' }}>@{user.username}</div>
-                    <p style={{ fontSize: '12px', color: '#94a3b8', lineHeight: '1.4', margin: '0 0 14px 0', flex: 1 }}>{user.bio || 'LCF Member'}</p>
+                    <p style={{ fontSize: '12px', color: '#94a3b8', lineHeight: '1.4', margin: '0 0 16px 0', flex: 1 }}>{user.bio || 'LCF Member'}</p>
 
                     {!isSelf && (
                       <div style={{ display: 'flex', gap: '8px', width: '100%' }}>
@@ -1736,10 +1772,10 @@ export default function App() {
                           onClick={() => handleSendFriendRequest(user)}
                           style={{
                             flex: 1,
-                            padding: '6px',
+                            padding: '8px',
                             backgroundColor: reqStatus === 'accepted' ? '#22c55e' : (reqStatus === 'pending' ? '#1e293b' : '#2563eb'),
                             border: 'none',
-                            borderRadius: '6px',
+                            borderRadius: '8px',
                             color: '#fff',
                             fontSize: '11px',
                             fontWeight: '600',
@@ -1750,7 +1786,7 @@ export default function App() {
                         </button>
                         <button
                           onClick={() => { setSelectedChatUser(user); setActiveTab('chats'); }}
-                          style={{ padding: '6px 10px', backgroundColor: '#1e293b', border: 'none', borderRadius: '6px', color: '#60a5fa', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}
+                          style={{ padding: '8px 12px', backgroundColor: '#1e293b', border: 'none', borderRadius: '8px', color: '#60a5fa', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}
                         >
                           Chat
                         </button>
@@ -1765,16 +1801,16 @@ export default function App() {
 
         {/* PROFILE TAB */}
         {activeTab === 'profile' && (
-          <div style={{ backgroundColor: '#151c2c', border: isMobile ? 'none' : '1px solid #1e293b', borderRadius: isMobile ? '0px' : '14px', overflow: 'hidden' }}>
+          <div style={{ backgroundColor: '#151c2c', border: isMobile ? 'none' : '1px solid #1e293b', borderRadius: isMobile ? '0px' : '16px', overflow: 'hidden' }}>
             <div style={{ height: '140px', backgroundImage: `url(${currentUser?.cover_url})`, backgroundSize: 'cover', backgroundPosition: 'center', position: 'relative' }}>
-              <label style={{ position: 'absolute', bottom: '10px', right: '10px', backgroundColor: 'rgba(0,0,0,0.7)', padding: '6px 10px', borderRadius: '6px', fontSize: '11px', cursor: 'pointer', color: '#fff', display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <label style={{ position: 'absolute', bottom: '10px', right: '10px', backgroundColor: 'rgba(0,0,0,0.7)', padding: '6px 12px', borderRadius: '8px', fontSize: '11px', cursor: 'pointer', color: '#fff', display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <FiCamera /> Change Cover Photo
                 <input type="file" accept="image/*" onChange={(e) => handleDeviceFileUpload(e, 'cover_url')} style={{ display: 'none' }} />
               </label>
             </div>
 
-            <div style={{ padding: '0 16px 20px', position: 'relative', marginTop: '-45px' }}>
-              <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: '12px' }}>
+            <div style={{ padding: '0 20px 24px', position: 'relative', marginTop: '-45px' }}>
+              <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: '14px' }}>
                 <div style={{ position: 'relative' }}>
                   <img src={currentUser?.avatar_url} alt="avatar" style={{ width: '90px', height: '90px', borderRadius: '50%', border: '4px solid #151c2c', objectFit: 'cover' }} />
                   <label style={{ position: 'absolute', bottom: 0, right: 0, backgroundColor: '#2563eb', padding: '6px', borderRadius: '50%', cursor: 'pointer', color: '#fff' }}>
@@ -1783,7 +1819,7 @@ export default function App() {
                   </label>
                 </div>
 
-                <button onClick={() => setIsEditingProfile(true)} style={{ padding: '6px 14px', backgroundColor: '#2563eb', border: 'none', borderRadius: '8px', color: '#fff', fontSize: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: '600' }}>
+                <button onClick={() => setIsEditingProfile(true)} style={{ padding: '8px 16px', backgroundColor: '#2563eb', border: 'none', borderRadius: '8px', color: '#fff', fontSize: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: '600' }}>
                   <FiEdit3 /> Edit
                 </button>
               </div>
@@ -1792,16 +1828,16 @@ export default function App() {
                 {currentUser?.full_name}
                 {currentUser?.verified && <FiCheckCircle size={16} color="#3b82f6" title="Verified" />}
               </h2>
-              <div style={{ fontSize: '12px', color: '#60a5fa', marginBottom: '8px' }}>@{currentUser?.username}</div>
+              <div style={{ fontSize: '12px', color: '#60a5fa', marginBottom: '10px' }}>@{currentUser?.username}</div>
               
-              <div style={{ display: 'flex', gap: '16px', fontSize: '12px', color: '#94a3b8', marginBottom: '12px' }}>
+              <div style={{ display: 'flex', gap: '16px', fontSize: '12px', color: '#94a3b8', marginBottom: '14px' }}>
                 <div><b style={{ color: '#eab308' }}>{lcfPoints}</b> LCF Points</div>
                 <div><b style={{ color: '#fff' }}>{friendCount}</b> Friends</div>
               </div>
 
-              <p style={{ fontSize: '13px', color: '#cbd5e1', lineHeight: '1.4', margin: '0 0 16px 0' }}>{currentUser?.bio}</p>
+              <p style={{ fontSize: '13px', color: '#cbd5e1', lineHeight: '1.4', margin: '0 0 18px 0' }}>{currentUser?.bio}</p>
 
-              <div style={{ backgroundColor: '#0f172a', padding: '12px', borderRadius: '8px', fontSize: '12px', color: '#94a3b8', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <div style={{ backgroundColor: '#0f172a', padding: '14px', borderRadius: '10px', fontSize: '12px', color: '#94a3b8', display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 <div>Email: <span style={{ color: '#fff' }}>{currentUser?.email}</span></div>
                 <div>User ID: <span style={{ color: '#fff', fontSize: '10px' }}>{currentUser?.id}</span></div>
                 <div>Referral Code: <span style={{ color: '#60a5fa' }}>{currentUser?.username}</span></div>
@@ -1810,22 +1846,22 @@ export default function App() {
 
             {isEditingProfile && (
               <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '16px' }}>
-                <div style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '14px', padding: '20px', width: '100%', maxWidth: '400px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                <div style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '16px', padding: '24px', width: '100%', maxWidth: '400px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                     <h3 style={{ fontSize: '16px', fontWeight: '700', margin: 0 }}>Edit Profile</h3>
                     <button onClick={() => setIsEditingProfile(false)} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer' }}><FiX size={18} /></button>
                   </div>
 
-                  <form onSubmit={handleSaveProfileChanges} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <form onSubmit={handleSaveProfileChanges} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                     <div>
                       <label style={{ fontSize: '11px', color: '#94a3b8', display: 'block', marginBottom: '4px' }}>Display Name</label>
-                      <input type="text" value={editName} onChange={(e) => setEditName(e.target.value)} style={{ width: '100%', padding: '8px', backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '6px', color: '#fff', fontSize: '12px', boxSizing: 'border-box' }} />
+                      <input type="text" value={editName} onChange={(e) => setEditName(e.target.value)} style={{ width: '100%', padding: '10px', backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', color: '#fff', fontSize: '12px', boxSizing: 'border-box' }} />
                     </div>
                     <div>
                       <label style={{ fontSize: '11px', color: '#94a3b8', display: 'block', marginBottom: '4px' }}>Bio</label>
-                      <textarea rows={2} value={editBio} onChange={(e) => setEditBio(e.target.value)} style={{ width: '100%', padding: '8px', backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '6px', color: '#fff', fontSize: '12px', boxSizing: 'border-box', resize: 'none' }} />
+                      <textarea rows={2} value={editBio} onChange={(e) => setEditBio(e.target.value)} style={{ width: '100%', padding: '10px', backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', color: '#fff', fontSize: '12px', boxSizing: 'border-box', resize: 'none' }} />
                     </div>
-                    <button type="submit" disabled={savingProfile} style={{ marginTop: '8px', padding: '10px', backgroundColor: '#2563eb', border: 'none', borderRadius: '8px', color: '#fff', fontWeight: '600', fontSize: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                    <button type="submit" disabled={savingProfile} style={{ marginTop: '10px', padding: '12px', backgroundColor: '#2563eb', border: 'none', borderRadius: '8px', color: '#fff', fontWeight: '600', fontSize: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
                       <FiSave /> {savingProfile ? 'Saving...' : 'Save Profile'}
                     </button>
                   </form>
