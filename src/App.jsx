@@ -35,7 +35,8 @@ import {
   FiTrash2,
   FiVolume2,
   FiVolumeX,
-  FiCornerDownRight
+  FiCornerDownRight,
+  FiArrowLeft
 } from 'react-icons/fi';
 
 export default function App() {
@@ -92,6 +93,7 @@ export default function App() {
 
   // User Profile & LCF Points Economy State
   const [currentUser, setCurrentUser] = useState(null);
+  const [viewingUserProfile, setViewingUserProfile] = useState(null);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [editName, setEditName] = useState('');
   const [editBio, setEditBio] = useState('');
@@ -342,7 +344,7 @@ export default function App() {
     }
   };
 
-  // UNIQUE LIKE PER USER FOR REELS
+  // UNIQUE LIKE PER USER FOR REELS (PREVENTS DOUBLE LIKING)
   const handleToggleReelLike = async (reel) => {
     const isLiked = likedReelsMap[reel.id];
     const currentLikes = Number(reel.likes) || 0;
@@ -561,7 +563,7 @@ export default function App() {
     }
   };
 
-  // UNIQUE LIKE PER USER FOR FEED POSTS
+  // UNIQUE LIKE PER USER FOR FEED POSTS (PREVENTS DOUBLE LIKING)
   const handleToggleLike = async (post) => {
     const isCurrentlyLiked = likedPosts[post.id];
     const currentLikes = Number(post.likes) || 0;
@@ -606,6 +608,26 @@ export default function App() {
       await supabase.from('post_comments').insert([newCommentObj]);
     } catch (e) {
       console.log('Add comment error:', e);
+    }
+  };
+
+  const handleViewCreatorProfile = async (userId, username) => {
+    if (userId === session.user.id) {
+      setActiveTab('profile');
+      setViewingUserProfile(null);
+      return;
+    }
+
+    const found = dbUsers.find(u => u.id === userId || u.username === username);
+    if (found) {
+      setViewingUserProfile(found);
+    } else {
+      try {
+        const { data } = await supabase.from('profiles').select('*').eq('id', userId).single();
+        if (data) setViewingUserProfile(data);
+      } catch (e) {
+        console.log('Profile view error:', e);
+      }
     }
   };
 
@@ -1220,7 +1242,7 @@ export default function App() {
           ].map(tab => (
             <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
+              onClick={() => { setActiveTab(tab.id); setViewingUserProfile(null); }}
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -1228,10 +1250,10 @@ export default function App() {
                 padding: '6px 12px',
                 border: 'none',
                 borderRadius: '20px',
-                backgroundColor: activeTab === tab.id ? '#2563eb' : 'transparent',
-                color: activeTab === tab.id ? '#fff' : '#94a3b8',
+                backgroundColor: activeTab === tab.id && !viewingUserProfile ? '#2563eb' : 'transparent',
+                color: activeTab === tab.id && !viewingUserProfile ? '#fff' : '#94a3b8',
                 fontSize: '12px',
-                fontWeight: activeTab === tab.id ? '600' : '500',
+                fontWeight: activeTab === tab.id && !viewingUserProfile ? '600' : '500',
                 cursor: 'pointer'
               }}
             >
@@ -1318,8 +1340,42 @@ export default function App() {
       {/* MAIN CONTAINER */}
       <main style={{ width: '100vw', maxWidth: '800px', margin: '0 auto', padding: activeTab === 'reels' ? '0' : (isMobile ? '12px' : '20px'), boxSizing: 'border-box' }}>
         
-        {/* HOME DASHBOARD TAB */}
-        {activeTab === 'home' && (
+        {/* VIEWING OTHER USER PROFILE VIEW */}
+        {viewingUserProfile && (
+          <div style={{ backgroundColor: '#151c2c', border: isMobile ? 'none' : '1px solid #1e293b', borderRadius: isMobile ? '0px' : '16px', overflow: 'hidden', marginBottom: '20px' }}>
+            <div style={{ padding: '12px 16px', borderBottom: '1px solid #1e293b', display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <button onClick={() => setViewingUserProfile(null)} style={{ background: 'none', border: 'none', color: '#60a5fa', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>
+                <FiArrowLeft /> Back
+              </button>
+              <span style={{ fontSize: '13px', fontWeight: '700', color: '#fff' }}>@{viewingUserProfile.username}'s Profile</span>
+            </div>
+
+            <div style={{ height: '140px', backgroundImage: `url(${viewingUserProfile.cover_url || 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&q=80&w=1000'})`, backgroundSize: 'cover', backgroundPosition: 'center' }}></div>
+
+            <div style={{ padding: '0 20px 24px', position: 'relative', marginTop: '-45px' }}>
+              <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: '14px' }}>
+                <img src={viewingUserProfile.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200'} alt="avatar" style={{ width: '90px', height: '90px', borderRadius: '50%', border: '4px solid #151c2c', objectFit: 'cover' }} />
+
+                <button
+                  onClick={() => { setSelectedChatUser(viewingUserProfile); setActiveTab('chats'); setViewingUserProfile(null); }}
+                  style={{ padding: '8px 16px', backgroundColor: '#2563eb', border: 'none', borderRadius: '8px', color: '#fff', fontSize: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: '600' }}
+                >
+                  <FiMessageSquare /> Chat
+                </button>
+              </div>
+
+              <h2 style={{ fontSize: '18px', fontWeight: '700', color: '#fff', margin: '0 0 2px 0', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                {viewingUserProfile.full_name}
+                {viewingUserProfile.verified && <FiCheckCircle size={16} color="#3b82f6" title="Verified" />}
+              </h2>
+              <div style={{ fontSize: '12px', color: '#60a5fa', marginBottom: '10px' }}>@{viewingUserProfile.username}</div>
+              
+              <p style={{ fontSize: '13px', color: '#cbd5e1', lineHeight: '1.4', margin: '0 0 18px 0' }}>{viewingUserProfile.bio || 'LCF Member'}</p>
+            </div>
+          </div>
+        )}
+
+        {!viewingUserProfile && activeTab === 'home' && (
           <div>
             <div style={{ marginBottom: '20px' }}>
               <div style={{ fontSize: '12px', color: '#94a3b8' }}>Welcome back</div>
@@ -1374,8 +1430,7 @@ export default function App() {
           </div>
         )}
 
-        {/* LCF WALLET & REWARDS TAB */}
-        {activeTab === 'wallet' && (
+        {!viewingUserProfile && activeTab === 'wallet' && (
           <div>
             <div style={{ marginBottom: '18px' }}>
               <h2 style={{ fontSize: '18px', fontWeight: '700', margin: '0 0 4px 0' }}>LCF Points Wallet</h2>
@@ -1449,8 +1504,7 @@ export default function App() {
           </div>
         )}
 
-        {/* FEED TAB */}
-        {activeTab === 'feed' && (
+        {!viewingUserProfile && activeTab === 'feed' && (
           <div>
             <div style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: isMobile ? '0px' : '16px', padding: '16px', marginBottom: '16px' }}>
               <div style={{ display: 'flex', gap: '12px' }}>
@@ -1489,14 +1543,23 @@ export default function App() {
               const comments = postCommentsMap[post.id] || [];
               const isCommentsOpen = openCommentsPostId === post.id;
               const parentComments = comments.filter(c => !c.parent_id);
+              const isLiked = likedPosts[post.id];
 
               return (
                 <div key={post.id} style={{ backgroundColor: '#151c2c', border: isMobile ? 'none' : '1px solid #1e293b', borderBottom: '1px solid #1e293b', borderRadius: isMobile ? '0px' : '16px', padding: '18px', marginBottom: '16px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'between', marginBottom: '12px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1 }}>
-                      <img src={post.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200'} alt="u" style={{ width: '40px', height: '40px', borderRadius: '50%', objectFit: 'cover' }} />
+                      <img
+                        src={post.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200'}
+                        alt="u"
+                        onClick={() => handleViewCreatorProfile(post.user_id, post.username)}
+                        style={{ width: '40px', height: '40px', borderRadius: '50%', objectFit: 'cover', cursor: 'pointer' }}
+                      />
                       <div>
-                        <div style={{ fontSize: '13px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <div
+                          onClick={() => handleViewCreatorProfile(post.user_id, post.username)}
+                          style={{ fontSize: '13px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', color: '#fff' }}
+                        >
                           {post.user_name}
                           {post.verified && <FiCheckCircle size={13} color="#3b82f6" title="Verified" />}
                         </div>
@@ -1512,8 +1575,8 @@ export default function App() {
                   )}
 
                   <div style={{ display: 'flex', gap: '20px', borderTop: '1px solid #1e293b', paddingTop: '12px', color: '#94a3b8', fontSize: '12px' }}>
-                    <button onClick={() => handleToggleLike(post)} style={{ background: 'none', border: 'none', color: likedPosts[post.id] ? '#ef4444' : '#94a3b8', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
-                      <FiHeart fill={likedPosts[post.id] ? '#ef4444' : 'none'} size={15} /> {post.likes || 0}
+                    <button onClick={() => handleToggleLike(post)} style={{ background: 'none', border: 'none', color: isLiked ? '#ef4444' : '#94a3b8', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                      <FiHeart fill={isLiked ? '#ef4444' : 'none'} size={15} /> {post.likes || 0}
                     </button>
                     <button onClick={() => setOpenCommentsPostId(isCommentsOpen ? null : post.id)} style={{ background: 'none', border: 'none', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
                       <FiMessageCircle size={15} /> {comments.length}
@@ -1563,11 +1626,11 @@ export default function App() {
                                     placeholder={`Reply to ${c.user_name}...`}
                                     value={replyInputMap[c.id] || ''}
                                     onChange={(e) => setReplyInputMap({ ...replyInputMap, [c.id]: e.target.value })}
-                                    style={{ flex: 1, padding: '8px 10px', backgroundColor: '#1e293b', border: 'none', borderRadius: '6px', color: '#fff', fontSize: '11px', outline: 'none' }}
+                                    style={{ flex: 1, padding: '10px 12px', backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px', color: '#fff', fontSize: '12px', outline: 'none' }}
                                   />
                                   <button
                                     onClick={() => handleAddComment(post.id, c.id)}
-                                    style={{ padding: '8px 12px', backgroundColor: '#2563eb', border: 'none', borderRadius: '6px', color: '#fff', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}
+                                    style={{ padding: '8px 14px', backgroundColor: '#2563eb', border: 'none', borderRadius: '8px', color: '#fff', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}
                                   >
                                     Send
                                   </button>
@@ -1581,15 +1644,15 @@ export default function App() {
                         )}
                       </div>
 
-                      <div style={{ display: 'flex', gap: '8px' }}>
+                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                         <input
                           type="text"
                           placeholder="Write a comment..."
                           value={commentInputMap[post.id] || ''}
                           onChange={(e) => setCommentInputMap({ ...commentInputMap, [post.id]: e.target.value })}
-                          style={{ flex: 1, padding: '10px 14px', backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', color: '#fff', fontSize: '12px', outline: 'none' }}
+                          style={{ flex: 1, padding: '12px 14px', backgroundColor: '#0f172a', border: '1px solid #334155', borderRadius: '8px', color: '#fff', fontSize: '12px', outline: 'none' }}
                         />
-                        <button onClick={() => handleAddComment(post.id)} style={{ padding: '10px 16px', backgroundColor: '#2563eb', border: 'none', borderRadius: '8px', color: '#fff', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
+                        <button onClick={() => handleAddComment(post.id)} style={{ padding: '12px 18px', backgroundColor: '#2563eb', border: 'none', borderRadius: '8px', color: '#fff', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
                           Comment
                         </button>
                       </div>
@@ -1601,8 +1664,8 @@ export default function App() {
           </div>
         )}
 
-        {/* REELS TAB (STRICT SINGLE-AUDIO & ACCESSIBLE COMMENTS & REPLIES) */}
-        {activeTab === 'reels' && (
+        {/* REELS TAB */}
+        {!viewingUserProfile && activeTab === 'reels' && (
           <div style={{ position: 'relative', width: '100vw', height: 'calc(100vh - 60px)', backgroundColor: '#000', overflow: 'hidden' }}>
             <div style={{ position: 'absolute', top: 12, right: 12, zIndex: 50 }}>
               <button onClick={() => setIsCreatingReel(true)} style={{ padding: '8px 16px', backgroundColor: 'rgba(37,99,235,0.85)', backdropFilter: 'blur(8px)', border: 'none', borderRadius: '20px', color: '#fff', fontSize: '12px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -1686,7 +1749,10 @@ export default function App() {
 
                     {/* RIGHT TIKTOK ACTION SIDEBAR */}
                     <div style={{ position: 'absolute', right: 16, bottom: 90, display: 'flex', flexDirection: 'column', gap: '20px', alignItems: 'center', zIndex: 40 }}>
-                      <div style={{ position: 'relative', marginBottom: '8px' }}>
+                      <div
+                        onClick={() => handleViewCreatorProfile(reel.user_id, reel.user)}
+                        style={{ position: 'relative', marginBottom: '8px', cursor: 'pointer' }}
+                      >
                         <img src={currentUser?.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200'} alt="creator" style={{ width: '48px', height: '48px', borderRadius: '50%', border: '2px solid #fff', objectFit: 'cover' }} />
                       </div>
 
@@ -1731,7 +1797,12 @@ export default function App() {
 
                     {/* BOTTOM TEXT CAPTION */}
                     <div style={{ position: 'absolute', bottom: 80, left: 16, right: 80, zIndex: 40, pointerEvents: 'none', textShadow: '0 1px 4px rgba(0,0,0,0.9)' }}>
-                      <div style={{ fontSize: '15px', fontWeight: '700', color: '#fff', marginBottom: '6px' }}>@{reel.user}</div>
+                      <div
+                        onClick={() => handleViewCreatorProfile(reel.user_id, reel.user)}
+                        style={{ fontSize: '15px', fontWeight: '700', color: '#fff', marginBottom: '6px', pointerEvents: 'auto', display: 'inline-block', cursor: 'pointer' }}
+                      >
+                        @{reel.user}
+                      </div>
                       <div style={{ fontSize: '13px', color: '#f1f5f9', lineHeight: '1.4' }}>{reel.title}</div>
                     </div>
 
@@ -1778,11 +1849,11 @@ export default function App() {
                                       placeholder={`Reply to ${c.user_name}...`}
                                       value={reelReplyInput}
                                       onChange={(e) => setReelReplyInput(e.target.value)}
-                                      style={{ flex: 1, padding: '8px 10px', backgroundColor: '#1e293b', border: 'none', borderRadius: '6px', color: '#fff', fontSize: '11px', outline: 'none' }}
+                                      style={{ flex: 1, padding: '10px 12px', backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px', color: '#fff', fontSize: '12px', outline: 'none' }}
                                     />
                                     <button
                                       onClick={() => handleAddReelComment(reel.id, c.id)}
-                                      style={{ padding: '8px 12px', backgroundColor: '#2563eb', border: 'none', borderRadius: '6px', color: '#fff', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}
+                                      style={{ padding: '8px 14px', backgroundColor: '#2563eb', border: 'none', borderRadius: '8px', color: '#fff', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}
                                     >
                                       Send
                                     </button>
@@ -1796,15 +1867,15 @@ export default function App() {
                           )}
                         </div>
 
-                        <div style={{ display: 'flex', gap: '8px' }}>
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                           <input
                             type="text"
                             placeholder="Add a comment..."
                             value={reelCommentInput}
                             onChange={(e) => setReelCommentInput(e.target.value)}
-                            style={{ flex: 1, padding: '10px 14px', backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', color: '#fff', fontSize: '12px', outline: 'none' }}
+                            style={{ flex: 1, padding: '12px 14px', backgroundColor: '#0f172a', border: '1px solid #334155', borderRadius: '8px', color: '#fff', fontSize: '12px', outline: 'none' }}
                           />
-                          <button onClick={() => handleAddReelComment(reel.id)} style={{ padding: '10px 16px', backgroundColor: '#2563eb', border: 'none', borderRadius: '8px', color: '#fff', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
+                          <button onClick={() => handleAddReelComment(reel.id)} style={{ padding: '12px 18px', backgroundColor: '#2563eb', border: 'none', borderRadius: '8px', color: '#fff', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
                             Post
                           </button>
                         </div>
@@ -1818,7 +1889,7 @@ export default function App() {
         )}
 
         {/* CHATS TAB */}
-        {activeTab === 'chats' && (
+        {!viewingUserProfile && activeTab === 'chats' && (
           <div style={{ backgroundColor: '#151c2c', border: isMobile ? 'none' : '1px solid #1e293b', borderRadius: isMobile ? '0px' : '16px', height: isMobile ? 'calc(100vh - 130px)' : '580px', display: 'grid', gridTemplateColumns: isMobile && selectedChatUser ? '1fr' : (isMobile ? '1fr' : '280px 1fr'), overflow: 'hidden', position: 'relative' }}>
             <div style={{ borderRight: '1px solid #1e293b', backgroundColor: '#0f172a', padding: '12px', display: isMobile && selectedChatUser ? 'none' : 'block', overflowY: 'auto' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
@@ -1984,7 +2055,7 @@ export default function App() {
         )}
 
         {/* FRIENDS TAB */}
-        {activeTab === 'friends' && (
+        {!viewingUserProfile && activeTab === 'friends' && (
           <div style={{ padding: '0 4px' }}>
             {incomingRequests.length > 0 && (
               <div style={{ backgroundColor: '#151c2c', border: '1px solid #2563eb', borderRadius: '16px', padding: '18px', marginBottom: '20px' }}>
@@ -2047,9 +2118,17 @@ export default function App() {
                 const isSelf = user.id === session?.user?.id;
                 return (
                   <div key={user.id} style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '16px', padding: '18px', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
-                    <img src={user.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200'} alt="u" style={{ width: '64px', height: '64px', borderRadius: '50%', objectFit: 'cover', marginBottom: '12px' }} />
+                    <img
+                      src={user.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200'}
+                      alt="u"
+                      onClick={() => handleViewCreatorProfile(user.id, user.username)}
+                      style={{ width: '64px', height: '64px', borderRadius: '50%', objectFit: 'cover', marginBottom: '12px', cursor: 'pointer' }}
+                    />
 
-                    <div style={{ fontSize: '14px', fontWeight: '700', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', marginBottom: '2px' }}>
+                    <div
+                      onClick={() => handleViewCreatorProfile(user.id, user.username)}
+                      style={{ fontSize: '14px', fontWeight: '700', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', marginBottom: '2px', cursor: 'pointer' }}
+                    >
                       {user.full_name}
                       {user.verified && <FiCheckCircle size={13} color="#3b82f6" title="Verified Account" />}
                     </div>
@@ -2091,7 +2170,7 @@ export default function App() {
         )}
 
         {/* PROFILE TAB */}
-        {activeTab === 'profile' && (
+        {activeTab === 'profile' && !viewingUserProfile && (
           <div style={{ backgroundColor: '#151c2c', border: isMobile ? 'none' : '1px solid #1e293b', borderRadius: isMobile ? '0px' : '16px', overflow: 'hidden' }}>
             <div style={{ height: '140px', backgroundImage: `url(${currentUser?.cover_url})`, backgroundSize: 'cover', backgroundPosition: 'center', position: 'relative' }}>
               <label style={{ position: 'absolute', bottom: '10px', right: '10px', backgroundColor: 'rgba(0,0,0,0.7)', padding: '6px 12px', borderRadius: '8px', fontSize: '11px', cursor: 'pointer', color: '#fff', display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -2244,8 +2323,8 @@ export default function App() {
         ].map(tab => (
           <button
             key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            style={{ background: 'none', border: 'none', color: activeTab === tab.id ? '#3b82f6' : '#94a3b8', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', fontSize: '9px' }}
+            onClick={() => { setActiveTab(tab.id); setViewingUserProfile(null); }}
+            style={{ background: 'none', border: 'none', color: activeTab === tab.id && !viewingUserProfile ? '#3b82f6' : '#94a3b8', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', fontSize: '9px' }}
           >
             {tab.icon}
             <span>{tab.label}</span>
