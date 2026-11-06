@@ -235,7 +235,6 @@ export default function App() {
   const fetchUserLikes = async () => {
     if (!session) return;
     try {
-      // Fetch Reel Likes
       const { data: rLikes } = await supabase
         .from('reel_likes')
         .select('reel_id')
@@ -247,7 +246,6 @@ export default function App() {
         setLikedReelsMap(rMap);
       }
 
-      // Fetch Post Likes
       const { data: pLikes } = await supabase
         .from('post_likes')
         .select('post_id')
@@ -373,7 +371,6 @@ export default function App() {
     }
   };
 
-  // PERSISTENT UNIQUE LIKE PER USER FOR REELS (PREVENTS DOUBLE LIKING ACROSS REFRESH)
   const handleToggleReelLike = async (reel) => {
     if (!session) return;
     const isLiked = likedReelsMap[reel.id];
@@ -445,7 +442,6 @@ export default function App() {
       }
     } catch (e) {
       console.log('Add reel comment error:', e);
-      alert('Failed to post comment. Ensure reel_comments table exists in Supabase.');
     }
   };
 
@@ -613,7 +609,6 @@ export default function App() {
     }
   };
 
-  // PERSISTENT UNIQUE LIKE PER USER FOR FEED POSTS
   const handleToggleLike = async (post) => {
     if (!session) return;
     const isCurrentlyLiked = likedPostsMap[post.id];
@@ -895,6 +890,7 @@ export default function App() {
     }
   };
 
+  // ROBUST REFERRAL & AUTH SIGNUP / LOGIN HANDLER
   const handleAuth = async (e) => {
     e.preventDefault();
     setAuthError('');
@@ -913,6 +909,7 @@ export default function App() {
         if (data?.user) {
           const isVerifiedSpecial = email.toLowerCase() === 'omoopeola1@gmail.com';
           
+          // SECURE REFERRAL BONUS CREDITING
           const activeRefCode = referredBy || localStorage.getItem('lcf_referred_by');
           if (activeRefCode) {
             try {
@@ -932,7 +929,7 @@ export default function App() {
                   .eq('id', refUser.id);
               }
             } catch (err) {
-              console.log('Referral bonus credit error:', err);
+              console.log('Referral bonus credit warning:', err);
             }
           }
 
@@ -1876,33 +1873,33 @@ export default function App() {
                       <div style={{ fontSize: '13px', color: '#f1f5f9', lineHeight: '1.4' }}>{reel.title}</div>
                     </div>
 
-                    {/* REEL COMMENTS MODAL & REPLIES DRAWER */}
+                    {/* REEL COMMENTS BOTTOM SHEET DRAWER */}
                     {isCommentsOpen && (
-                      <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '65%', backgroundColor: '#151c2c', borderTopLeftRadius: '20px', borderTopRightRadius: '20px', zIndex: 100, display: 'flex', flexDirection: 'column', padding: '16px', boxSizing: 'border-box' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #1e293b', paddingBottom: '10px', marginBottom: '12px' }}>
-                          <h4 style={{ fontSize: '14px', fontWeight: '700', margin: 0, color: '#fff' }}>Comments ({comments.length})</h4>
-                          <button onClick={() => setOpenReelCommentsId(null)} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer' }}><FiX size={18} /></button>
+                      <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, height: '65vh', backgroundColor: '#151c2c', borderTopLeftRadius: '24px', borderTopRightRadius: '24px', zIndex: 200, display: 'flex', flexDirection: 'column', boxShadow: '0 -10px 30px rgba(0,0,0,0.8)', pointerEvents: 'auto', boxSizing: 'border-box' }}>
+                        <div style={{ padding: '14px 20px', borderBottom: '1px solid #1e293b', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+                          <h4 style={{ fontSize: '15px', fontWeight: '700', margin: 0, color: '#fff' }}>Comments ({comments.length})</h4>
+                          <button onClick={() => setOpenReelCommentsId(null)} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '6px' }}><FiX size={20} /></button>
                         </div>
 
-                        <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '12px' }}>
+                        <div style={{ flex: 1, overflowY: 'auto', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
                           {parentReelComments.map(c => {
                             const replies = comments.filter(r => r.parent_id === c.id);
                             const isReplying = activeReelReplyId === c.id;
 
                             return (
-                              <div key={c.id} style={{ backgroundColor: '#0f172a', padding: '10px 12px', borderRadius: '10px', fontSize: '12px' }}>
-                                <div style={{ fontWeight: '600', color: '#60a5fa', marginBottom: '2px' }}>{c.user_name}</div>
-                                <div style={{ color: '#e2e8f0', marginBottom: '6px' }}>{c.comment}</div>
+                              <div key={c.id} style={{ backgroundColor: '#0f172a', padding: '12px 14px', borderRadius: '12px', fontSize: '12px' }}>
+                                <div style={{ fontWeight: '600', color: '#60a5fa', marginBottom: '4px' }}>{c.user_name}</div>
+                                <div style={{ color: '#e2e8f0', marginBottom: '8px', lineHeight: '1.4' }}>{c.comment}</div>
 
                                 <button
                                   onClick={() => setActiveReelReplyId(isReplying ? null : c.id)}
-                                  style={{ background: 'none', border: 'none', color: '#60a5fa', fontSize: '11px', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', gap: '4px' }}
+                                  style={{ background: 'none', border: 'none', color: '#60a5fa', fontSize: '11px', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', gap: '4px', fontWeight: '600' }}
                                 >
                                   <FiCornerDownRight size={11} /> Reply
                                 </button>
 
                                 {replies.length > 0 && (
-                                  <div style={{ marginTop: '6px', paddingLeft: '12px', borderLeft: '2px solid #1e293b', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                  <div style={{ marginTop: '8px', paddingLeft: '14px', borderLeft: '2px solid #1e293b', display: 'flex', flexDirection: 'column', gap: '6px' }}>
                                     {replies.map(rep => (
                                       <div key={rep.id} style={{ fontSize: '11px' }}>
                                         <span style={{ fontWeight: '600', color: '#38bdf8', marginRight: '6px' }}>{rep.user_name}:</span>
@@ -1913,17 +1910,17 @@ export default function App() {
                                 )}
 
                                 {isReplying && (
-                                  <div style={{ display: 'flex', gap: '6px', marginTop: '8px' }}>
+                                  <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
                                     <input
                                       type="text"
                                       placeholder={`Reply to ${c.user_name}...`}
                                       value={reelReplyInput}
                                       onChange={(e) => setReelReplyInput(e.target.value)}
-                                      style={{ flex: 1, padding: '10px 12px', backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px', color: '#fff', fontSize: '12px', outline: 'none' }}
+                                      style={{ flex: 1, padding: '10px 14px', backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px', color: '#fff', fontSize: '12px', outline: 'none' }}
                                     />
                                     <button
                                       onClick={() => handleAddReelComment(reel.id, c.id)}
-                                      style={{ padding: '8px 14px', backgroundColor: '#2563eb', border: 'none', borderRadius: '8px', color: '#fff', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}
+                                      style={{ padding: '8px 16px', backgroundColor: '#2563eb', border: 'none', borderRadius: '8px', color: '#fff', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}
                                     >
                                       Send
                                     </button>
@@ -1933,19 +1930,19 @@ export default function App() {
                             );
                           })}
                           {parentReelComments.length === 0 && (
-                            <div style={{ textAlign: 'center', color: '#94a3b8', padding: '30px', fontSize: '12px' }}>No comments yet. Be the first to comment!</div>
+                            <div style={{ textAlign: 'center', color: '#94a3b8', padding: '40px 20px', fontSize: '13px' }}>No comments yet. Be the first to comment!</div>
                           )}
                         </div>
 
-                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', background: '#151c2c', paddingBottom: '10px' }}>
+                        <div style={{ padding: '12px 16px', backgroundColor: '#151c2c', borderTop: '1px solid #1e293b', display: 'flex', gap: '10px', alignItems: 'center', flexShrink: 0, paddingBottom: '24px' }}>
                           <input
                             type="text"
                             placeholder="Add a comment..."
                             value={reelCommentInput}
                             onChange={(e) => setReelCommentInput(e.target.value)}
-                            style={{ flex: 1, padding: '12px 14px', backgroundColor: '#0f172a', border: '1px solid #334155', borderRadius: '8px', color: '#fff', fontSize: '12px', outline: 'none', pointerEvents: 'auto' }}
+                            style={{ flex: 1, padding: '12px 16px', backgroundColor: '#0f172a', border: '1px solid #334155', borderRadius: '10px', color: '#fff', fontSize: '13px', outline: 'none' }}
                           />
-                          <button onClick={() => handleAddReelComment(reel.id)} style={{ padding: '12px 18px', backgroundColor: '#2563eb', border: 'none', borderRadius: '8px', color: '#fff', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
+                          <button onClick={() => handleAddReelComment(reel.id)} style={{ padding: '12px 20px', backgroundColor: '#2563eb', border: 'none', borderRadius: '10px', color: '#fff', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}>
                             Post
                           </button>
                         </div>
