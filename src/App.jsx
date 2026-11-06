@@ -31,7 +31,8 @@ import {
   FiShare2,
   FiCreditCard,
   FiCheck,
-  FiCopy
+  FiCopy,
+  FiTrash2
 } from 'react-icons/fi';
 
 export default function App() {
@@ -124,7 +125,7 @@ export default function App() {
   const [notifications, setNotifications] = useState([]);
   const [showNotifications, setShowNotifications] = useState(false);
 
-  // Reels State (Supports direct phone video/photo uploads)
+  // Reels State
   const [reels, setReels] = useState([
     { id: '1', title: 'Street-pop beat breakdown & lyrics', user: 'lekkxygold', views: '3.4k', url: 'https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&q=80&w=400', isVideo: false },
     { id: '2', title: 'Commercial Lounge Architecture', user: 'gene_foster', views: '1.9k', url: 'https://images.unsplash.com/photo-1554118811-1e0d58224f24?auto=format&fit=crop&q=80&w=400', isVideo: false }
@@ -140,6 +141,7 @@ export default function App() {
   const [newMessage, setNewMessage] = useState('');
   const [chatPhotoBase64, setChatPhotoBase64] = useState(null);
   const [unreadCounts, setUnreadCounts] = useState({});
+  const messagesEndRef = useRef(null);
 
   // Voice Recording State
   const [isRecording, setIsRecording] = useState(false);
@@ -208,6 +210,13 @@ export default function App() {
       fetchUnreadMessageCounts();
     }
   }, [session]);
+
+  // Auto scroll chat to bottom when messages update
+  useEffect(() => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages]);
 
   const fetchUnreadMessageCounts = async () => {
     if (!session) return;
@@ -582,12 +591,34 @@ export default function App() {
           }
         }
       )
+      .on(
+        'postgres_changes',
+        {
+          event: 'DELETE',
+          schema: 'public',
+          table: 'messages'
+        },
+        (payload) => {
+          setMessages((prev) => prev.filter(m => m.id !== payload.old.id));
+        }
+      )
       .subscribe();
 
     return () => {
       supabase.removeChannel(chatChannel);
     };
   }, [session, selectedChatUser]);
+
+  const handleDeleteMessage = async (msgId) => {
+    if (!window.confirm("Delete this message?")) return;
+    try {
+      setMessages(prev => prev.filter(m => m.id !== msgId));
+      await supabase.from('messages').delete().eq('id', msgId);
+    } catch (err) {
+      console.log('Delete message error:', err);
+      alert('Failed to delete message.');
+    }
+  };
 
   const handleAuth = async (e) => {
     e.preventDefault();
@@ -607,7 +638,6 @@ export default function App() {
         if (data?.user) {
           const isVerifiedSpecial = email.toLowerCase() === 'omoopeola1@gmail.com';
           
-          // Credit referrer with +80 points if user signed up with a referral code
           if (referredBy) {
             try {
               const { data: refUser } = await supabase.from('profiles').select('id, lcf_points').eq('username', referredBy).single();
@@ -783,7 +813,6 @@ export default function App() {
     }
   };
 
-  // Real Microphone Voice Recording Logic
   const startRecording = async () => {
     audioChunksRef.current = [];
     try {
@@ -806,8 +835,6 @@ export default function App() {
           handleSendMessage(null, '🎤 Voice note', base64Audio);
         };
         reader.readAsDataURL(audioBlob);
-        
-        // Stop all audio tracks
         stream.getTracks().forEach(track => track.stop());
       };
 
@@ -1325,7 +1352,7 @@ export default function App() {
           </div>
         )}
 
-        {/* REELS TAB (Direct phone video / photo upload) */}
+        {/* REELS TAB */}
         {activeTab === 'reels' && (
           <div style={{ padding: '0 4px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
@@ -1388,16 +1415,16 @@ export default function App() {
           </div>
         )}
 
-        {/* CHATS TAB (Fixed sticky input box & working microphone voice recorder) */}
+        {/* CHATS TAB (FIXED LAYOUT: Fixed height container with flex column and sticky bottom input) */}
         {activeTab === 'chats' && (
-          <div style={{ backgroundColor: '#151c2c', border: isMobile ? 'none' : '1px solid #1e293b', borderRadius: isMobile ? '0px' : '14px', height: isMobile ? 'calc(100vh - 140px)' : '540px', display: 'grid', gridTemplateColumns: isMobile && selectedChatUser ? '1fr' : (isMobile ? '1fr' : '260px 1fr'), overflow: 'hidden' }}>
-            <div style={{ borderRight: '1px solid #1e293b', backgroundColor: '#0f172a', padding: '12px', display: isMobile && selectedChatUser ? 'none' : 'block' }}>
+          <div style={{ backgroundColor: '#151c2c', border: isMobile ? 'none' : '1px solid #1e293b', borderRadius: isMobile ? '0px' : '14px', height: isMobile ? 'calc(100vh - 130px)' : '560px', display: 'grid', gridTemplateColumns: isMobile && selectedChatUser ? '1fr' : (isMobile ? '1fr' : '260px 1fr'), overflow: 'hidden', position: 'relative' }}>
+            <div style={{ borderRight: '1px solid #1e293b', backgroundColor: '#0f172a', padding: '12px', display: isMobile && selectedChatUser ? 'none' : 'block', overflowY: 'auto' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
                 <h3 style={{ fontSize: '14px', fontWeight: '700', margin: 0 }}>Chats</h3>
                 <span style={{ fontSize: '11px', color: '#94a3b8' }}>Private conversations</span>
               </div>
               
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', overflowY: 'auto', maxHeight: '440px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 {dbUsers.filter(u => u.id !== session?.user?.id).map(user => {
                   const unreadCount = unreadCounts[user.id] || 0;
                   return (
@@ -1431,10 +1458,11 @@ export default function App() {
               </div>
             </div>
 
-            <div style={{ display: isMobile && !selectedChatUser ? 'none' : 'flex', flexDirection: 'column', height: '100%', backgroundColor: '#151c2c', position: 'relative' }}>
+            <div style={{ display: isMobile && !selectedChatUser ? 'none' : 'flex', flexDirection: 'column', height: '100%', backgroundColor: '#151c2c', position: 'relative', overflow: 'hidden' }}>
               {selectedChatUser ? (
                 <>
-                  <div style={{ padding: '12px 16px', borderBottom: '1px solid #1e293b', display: 'flex', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#151c2c', zIndex: 10 }}>
+                  {/* CHAT HEADER */}
+                  <div style={{ padding: '12px 16px', borderBottom: '1px solid #1e293b', display: 'flex', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#151c2c', zIndex: 10, flexShrink: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       {isMobile && (
                         <button onClick={() => setSelectedChatUser(null)} style={{ background: 'none', border: 'none', color: '#60a5fa', fontSize: '12px', cursor: 'pointer', marginRight: '4px' }}>Back</button>
@@ -1450,14 +1478,22 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* SCROLLABLE MESSAGE CONTAINER WITH BOTTOM PADDING */}
-                  <div style={{ flex: 1, padding: '16px 16px 80px 16px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  {/* SCROLLABLE MESSAGES CONTAINER */}
+                  <div style={{ flex: 1, overflowY: 'auto', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px', paddingBottom: '70px' }}>
                     {messages.map(m => {
                       const isMe = m.sender_id === session.user.id;
                       const isVoice = m.text?.startsWith('🎤') || (m.image && m.image.startsWith('data:audio'));
                       return (
                         <div
                           key={m.id}
+                          onContextMenu={(e) => {
+                            e.preventDefault();
+                            if (isMe) handleDeleteMessage(m.id);
+                          }}
+                          onDoubleClick={() => {
+                            if (isMe) handleDeleteMessage(m.id);
+                          }}
+                          title="Long press or double tap to delete"
                           style={{
                             alignSelf: isMe ? 'flex-end' : 'flex-start',
                             backgroundColor: isMe ? '#2563eb' : '#1e293b',
@@ -1465,7 +1501,9 @@ export default function App() {
                             padding: '10px 14px',
                             borderRadius: '12px',
                             fontSize: '12px',
-                            maxWidth: '75%'
+                            maxWidth: '75%',
+                            position: 'relative',
+                            cursor: isMe ? 'pointer' : 'default'
                           }}
                         >
                           {isVoice ? (
@@ -1479,9 +1517,16 @@ export default function App() {
                             m.text && <div>{m.text}</div>
                           )}
                           {m.image && !isVoice && <img src={m.image} alt="shared" style={{ width: '100%', borderRadius: '8px', marginTop: '6px', maxHeight: '180px', objectFit: 'cover' }} />}
+                          
+                          {isMe && (
+                            <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.6)', textAlign: 'right', marginTop: '2px' }}>
+                              Hold to delete
+                            </div>
+                          )}
                         </div>
                       );
                     })}
+                    <div ref={messagesEndRef} />
                   </div>
 
                   {chatPhotoBase64 && (
@@ -1493,8 +1538,8 @@ export default function App() {
                     </div>
                   )}
 
-                  {/* FIXED STICKY CHAT INPUT BOX & WORKING VOICE RECORDER */}
-                  <form onSubmit={handleSendMessage} style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '10px 16px', backgroundColor: '#151c2c', borderTop: '1px solid #1e293b', display: 'flex', gap: '8px', alignItems: 'center', zIndex: 12 }}>
+                  {/* STICKY INPUT BAR */}
+                  <form onSubmit={handleSendMessage} style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '10px 16px', backgroundColor: '#151c2c', borderTop: '1px solid #1e293b', display: 'flex', gap: '8px', alignItems: 'center', zIndex: 12, flexShrink: 0 }}>
                     <label style={{ cursor: 'pointer', color: '#60a5fa', display: 'flex', alignItems: 'center' }} title="Send Photo">
                       <FiImage size={18} />
                       <input type="file" accept="image/*" onChange={(e) => {
