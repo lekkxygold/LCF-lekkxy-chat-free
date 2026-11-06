@@ -125,7 +125,7 @@ export default function App() {
   const [notifications, setNotifications] = useState([]);
   const [showNotifications, setShowNotifications] = useState(false);
 
-  // Reels State (Connected to Supabase Table with Creator Deletion Support)
+  // Reels State (Connected to Supabase Table)
   const [reels, setReels] = useState([]);
   const [isCreatingReel, setIsCreatingReel] = useState(false);
   const [newReelTitle, setNewReelTitle] = useState('');
@@ -302,7 +302,7 @@ export default function App() {
     }
   };
 
-  // Publish Reel to Supabase Database
+  // Publish Reel to Supabase Database (using lowercase 'isvideo' column)
   const handlePublishReel = async () => {
     if (!newReelMediaBase64) {
       alert("Please select a video or photo file from your phone first.");
@@ -314,7 +314,7 @@ export default function App() {
       user: currentUser?.username || 'user',
       title: newReelTitle || 'My Reel',
       url: newReelMediaBase64,
-      isVideo: isReelVideoType,
+      isvideo: isReelVideoType,
       views: '1 view'
     };
 
@@ -1422,7 +1422,7 @@ export default function App() {
           </div>
         )}
 
-        {/* REELS TAB (Persistent Supabase reels with creator delete support) */}
+        {/* REELS TAB */}
         {activeTab === 'reels' && (
           <div style={{ padding: '0 4px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
@@ -1463,7 +1463,7 @@ export default function App() {
                 const isMyReel = reel.user_id === session?.user?.id;
                 return (
                   <div key={reel.id} style={{ position: 'relative', borderRadius: '12px', overflow: 'hidden', height: '380px', backgroundColor: '#000', border: '1px solid #1e293b' }}>
-                    {reel.isVideo ? (
+                    {reel.isvideo ? (
                       <video src={reel.url} controls autoPlay muted loop style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                     ) : (
                       <img src={reel.url} alt="reel" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
