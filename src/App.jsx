@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from './supabaseClient';
 import {
   FiHome,
@@ -22,15 +22,19 @@ import {
   FiUserX,
   FiMessageCircle,
   FiRefreshCw,
-  FiDownload
+  FiDownload,
+  FiMic,
+  FiPlay,
+  FiSquare,
+  FiPlus
 } from 'react-icons/fi';
 
 export default function App() {
   const [session, setSession] = useState(null);
-  const [activeTab, setActiveTab] = useState('feed');
+  const [activeTab, setActiveTab] = useState('home');
   const [loading, setLoading] = useState(true);
 
-  // Screen Width State (Prevents direct window SSR/initialization crash)
+  // Screen Width State (Responsive Check)
   const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' ? window.innerWidth < 768 : false);
 
   useEffect(() => {
@@ -60,14 +64,16 @@ export default function App() {
   const [editBio, setEditBio] = useState('');
   const [savingProfile, setSavingProfile] = useState(false);
 
-  // Registered Users Directory State
+  // Registered Users & Directory State
   const [dbUsers, setDbUsers] = useState([]);
   const [userSearchQuery, setUserSearchQuery] = useState('');
 
-  // Friend Requests & Count State
+  // Friends & Connections State
   const [incomingRequests, setIncomingRequests] = useState([]);
   const [sentRequestMap, setSentRequestMap] = useState({});
   const [friendCount, setFriendCount] = useState(0);
+  const [followersCount, setFollowersCount] = useState(1);
+  const [followingCount, setFollowingCount] = useState(1);
 
   // Posts & Comments State
   const [posts, setPosts] = useState([]);
@@ -76,6 +82,7 @@ export default function App() {
   const [openCommentsPostId, setOpenCommentsPostId] = useState(null);
   const [postCommentsMap, setPostCommentsMap] = useState({});
   const [commentInputMap, setCommentInputMap] = useState({});
+  const [likedPosts, setLikedPosts] = useState({});
 
   // Notifications State
   const [notifications, setNotifications] = useState([]);
@@ -83,20 +90,30 @@ export default function App() {
 
   // Reels State
   const [reels, setReels] = useState([
-    { id: '1', title: 'Tech Prototyping Showcase', user: 'lekkxygold', views: '3.4k', url: 'https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&q=80&w=400' },
+    { id: '1', title: 'The wise tortoise animation', user: 'lekkxygold', views: '3.4k', url: 'https://images.unsplash.com/photo-1534567153574-2b12153a87f0?auto=format&fit=crop&q=80&w=400' },
     { id: '2', title: 'Commercial Lounge Architecture', user: 'gene_foster', views: '1.9k', url: 'https://images.unsplash.com/photo-1554118811-1e0d58224f24?auto=format&fit=crop&q=80&w=400' }
   ]);
   const [isCreatingReel, setIsCreatingReel] = useState(false);
   const [newReelTitle, setNewReelTitle] = useState('');
   const [newReelUrl, setNewReelUrl] = useState('');
 
-  // Messaging State & Unread Counts Map
+  // Groups State
+  const [groups, setGroups] = useState([
+    { id: '1', name: 'Verified members', description: 'Good evening members, welcome to LCF official lounge.', membersCount: 14 }
+  ]);
+  const [selectedGroup, setSelectedGroup] = useState(null);
+  const [groupMessages, setGroupMessages] = useState([
+    { id: '1', user: 'Olalekan Oluwole', text: 'Good evening members, welcome to LCF official lounge.', time: '7:00 PM' }
+  ]);
+  const [newGroupMsg, setNewGroupMsg] = useState('');
+
+  // Messaging State & Unread Counts
   const [selectedChatUser, setSelectedChatUser] = useState(null);
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
   const [chatPhotoBase64, setChatPhotoBase64] = useState(null);
-  const [likedPosts, setLikedPosts] = useState({});
   const [unreadCounts, setUnreadCounts] = useState({});
+  const [isRecordingVoice, setIsRecordingVoice] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -208,8 +225,8 @@ export default function App() {
           id: user.id,
           email: user.email,
           username: user.user_metadata?.username || user.email.split('@')[0],
-          full_name: user.user_metadata?.full_name || (isVerifiedSpecial ? 'Omoopeola' : 'LCF Member'),
-          bio: isVerifiedSpecial ? 'Verified Official LCF Pioneer Account.' : 'LCF Community Member.',
+          full_name: user.user_metadata?.full_name || (isVerifiedSpecial ? 'Omoopeola' : 'lekkxygold'),
+          bio: isVerifiedSpecial ? 'Verified Official LCF Pioneer Account.' : 'Am lekkxygold and needed more friends here',
           avatar_url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200',
           cover_url: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&q=80&w=1000',
           verified: isVerifiedSpecial,
@@ -387,7 +404,7 @@ export default function App() {
     }
   };
 
-  // Real-time unread counter and notifications subscription
+  // Real-time unread counter & subscriptions
   useEffect(() => {
     if (!session) return;
 
@@ -432,7 +449,7 @@ export default function App() {
     };
   }, [session, dbUsers, selectedChatUser]);
 
-  // Real-time Chat Room Subscription & Auto-clear unread badge on chat open
+  // Real-time Chat Room Subscription & Auto-clear unread badge
   useEffect(() => {
     if (!session || !selectedChatUser) return;
 
@@ -653,6 +670,24 @@ export default function App() {
     }
   };
 
+  const handleSimulateVoiceNote = async () => {
+    if (!selectedChatUser) return;
+    const voiceMsg = {
+      sender_id: session.user.id,
+      recipient_id: selectedChatUser.id,
+      text: '🎤 Voice note (0:09)',
+      image: null
+    };
+    try {
+      const { data } = await supabase.from('messages').insert([voiceMsg]).select().single();
+      if (data) {
+        setMessages(prev => [...prev, data]);
+      }
+    } catch (e) {
+      console.log('Voice note error:', e);
+    }
+  };
+
   const getUserStatusText = (lastSeenString) => {
     if (!lastSeenString) return <span style={{ color: '#94a3b8' }}>Offline</span>;
     const lastSeenDate = new Date(lastSeenString);
@@ -787,21 +822,26 @@ export default function App() {
   }
 
   return (
-    <div style={{ backgroundColor: '#0b0f17', color: '#f8fafc', minHeight: '100vh', width: '100vw', maxWidth: '100vw', margin: 0, padding: 0, boxSizing: 'border-box', paddingBottom: '80px', fontFamily: 'Inter, system-ui, sans-serif', overflowX: 'hidden', position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, overflowY: 'auto' }}>
+    <div style={{ backgroundColor: '#0b0f17', color: '#f8fafc', minHeight: '100vh', width: '100vw', maxWidth: '100vw', margin: 0, padding: 0, boxSizing: 'border-box', paddingBottom: '90px', fontFamily: 'Inter, system-ui, sans-serif', overflowX: 'hidden', position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, overflowY: 'auto' }}>
       <header style={{ position: 'sticky', top: 0, zIndex: 100, backgroundColor: 'rgba(15, 23, 42, 0.95)', backdropFilter: 'blur(10px)', borderBottom: '1px solid #1e293b', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100vw', boxSizing: 'border-box' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'linear-gradient(135deg, #2563eb, #1d4ed8)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 'bold', fontSize: '12px' }}>
             LCF
           </div>
-          <span style={{ fontSize: '16px', fontWeight: '700' }}>LCF Hub</span>
+          <div>
+            <span style={{ fontSize: '15px', fontWeight: '700', display: 'block' }}>LCF</span>
+            <span style={{ fontSize: '10px', color: '#94a3b8' }}>Lekxxy Chat Free</span>
+          </div>
         </div>
 
         <nav style={{ display: !isMobile ? 'flex' : 'none', gap: '4px', backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '24px', padding: '3px' }}>
           {[
-            { id: 'feed', label: 'Feed', icon: <FiHome /> },
-            { id: 'find', label: 'Find Friends', icon: <FiUsers /> },
+            { id: 'home', label: 'Home', icon: <FiHome /> },
+            { id: 'feed', label: 'Feed', icon: <FiMessageCircle /> },
             { id: 'reels', label: 'Reels', icon: <FiVideo /> },
             { id: 'chats', label: 'Chats', icon: <FiMessageSquare /> },
+            { id: 'friends', label: 'Friends', icon: <FiUsers /> },
+            { id: 'groups', label: 'Groups', icon: <FiUsers /> },
             { id: 'profile', label: 'Profile', icon: <FiUser /> }
           ].map(tab => (
             <button
@@ -831,9 +871,9 @@ export default function App() {
           <button
             onClick={handleInstallClick}
             style={{ backgroundColor: '#1e293b', border: '1px solid #334155', color: '#60a5fa', padding: '8px 12px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: '600' }}
-            title="Download/Install App"
+            title="Download App"
           >
-            <FiDownload size={14} /> <span style={{ display: isMobile ? 'none' : 'inline' }}>Install App</span>
+            <FiDownload size={14} /> <span style={{ display: isMobile ? 'none' : 'inline' }}>Install</span>
           </button>
 
           <div style={{ position: 'relative' }}>
@@ -901,8 +941,57 @@ export default function App() {
         </div>
       </header>
 
-      {/* FULL WIDTH MOBILE CONTAINER */}
-      <main style={{ width: '100vw', maxWidth: '800px', margin: '0 auto', padding: isMobile ? '4px' : '16px', boxSizing: 'border-box' }}>
+      {/* MAIN CONTAINER */}
+      <main style={{ width: '100vw', maxWidth: '800px', margin: '0 auto', padding: isMobile ? '8px' : '16px', boxSizing: 'border-box' }}>
+        
+        {/* HOME DASHBOARD TAB */}
+        {activeTab === 'home' && (
+          <div>
+            <div style={{ marginBottom: '20px' }}>
+              <div style={{ fontSize: '12px', color: '#94a3b8' }}>Welcome back</div>
+              <h2 style={{ fontSize: '20px', fontWeight: '700', margin: '2px 0 6px 0' }}>Hey, {currentUser?.full_name || 'Olalekan'}</h2>
+              <p style={{ fontSize: '13px', color: '#60a5fa', margin: 0 }}>Connect. Chat. Stay Connected.</p>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px' }}>
+              <div onClick={() => setActiveTab('friends')} style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '12px', padding: '16px', cursor: 'pointer' }}>
+                <div style={{ color: '#3b82f6', marginBottom: '10px' }}><FiUsers size={22} /></div>
+                <h3 style={{ fontSize: '15px', fontWeight: '600', margin: '0 0 4px 0' }}>Find people</h3>
+                <p style={{ fontSize: '12px', color: '#94a3b8', margin: 0 }}>Search by name or username</p>
+              </div>
+
+              <div onClick={() => setActiveTab('profile')} style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '12px', padding: '16px', cursor: 'pointer' }}>
+                <div style={{ color: '#3b82f6', marginBottom: '10px' }}><FiUser size={22} /></div>
+                <h3 style={{ fontSize: '15px', fontWeight: '600', margin: '0 0 4px 0' }}>Your profile</h3>
+                <p style={{ fontSize: '12px', color: '#94a3b8', margin: 0 }}>Edit your details</p>
+              </div>
+
+              <div onClick={() => setActiveTab('chats')} style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '12px', padding: '16px', cursor: 'pointer' }}>
+                <div style={{ color: '#3b82f6', marginBottom: '10px' }}><FiMessageSquare size={22} /></div>
+                <h3 style={{ fontSize: '15px', fontWeight: '600', margin: '0 0 4px 0' }}>Chats</h3>
+                <p style={{ fontSize: '12px', color: '#94a3b8', margin: 0 }}>Your private conversations</p>
+              </div>
+
+              <div onClick={() => setActiveTab('groups')} style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '12px', padding: '16px', cursor: 'pointer' }}>
+                <div style={{ color: '#3b82f6', marginBottom: '10px' }}><FiUsers size={22} /></div>
+                <h3 style={{ fontSize: '15px', fontWeight: '600', margin: '0 0 4px 0' }}>Groups</h3>
+                <p style={{ fontSize: '12px', color: '#94a3b8', margin: 0 }}>Chat with several people at once</p>
+              </div>
+            </div>
+
+            <div style={{ marginTop: '24px', backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '12px', padding: '16px' }}>
+              <h3 style={{ fontSize: '14px', fontWeight: '700', margin: '0 0 10px 0' }}>Build progress</h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '12px', color: '#94a3b8' }}>
+                <div>🟢 Profiles, auth & search</div>
+                <div>🟢 Followers, friends & privacy</div>
+                <div>🟢 Real-time private messaging</div>
+                <div>🟢 Groups, notifications & support</div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* FEED TAB */}
         {activeTab === 'feed' && (
           <div>
             <div style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: isMobile ? '0px' : '12px', padding: '14px', marginBottom: '16px' }}>
@@ -912,7 +1001,7 @@ export default function App() {
                   rows={2}
                   value={newPostText}
                   onChange={(e) => setNewPostText(e.target.value)}
-                  placeholder="What's on your mind? Share to LCF..."
+                  placeholder="What's on your mind?"
                   style={{ width: '100%', backgroundColor: 'transparent', border: 'none', color: '#fff', fontSize: '13px', outline: 'none', resize: 'none' }}
                 />
               </div>
@@ -928,7 +1017,7 @@ export default function App() {
 
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '10px', paddingTop: '10px', borderTop: '1px solid #1e293b' }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#60a5fa', fontSize: '12px', cursor: 'pointer' }}>
-                  <FiImage size={16} /> Attach Photo from Phone
+                  <FiImage size={16} /> Photo
                   <input type="file" accept="image/*" onChange={(e) => handleDeviceFileUpload(e, 'newPostImageBase64')} style={{ display: 'none' }} />
                 </label>
 
@@ -943,14 +1032,16 @@ export default function App() {
               const isCommentsOpen = openCommentsPostId === post.id;
               return (
                 <div key={post.id} style={{ backgroundColor: '#151c2c', border: isMobile ? 'none' : '1px solid #1e293b', borderBottom: '1px solid #1e293b', borderRadius: isMobile ? '0px' : '12px', padding: '16px', marginBottom: '14px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
-                    <img src={post.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200'} alt="u" style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover' }} />
-                    <div>
-                      <div style={{ fontSize: '13px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        {post.user_name}
-                        {post.verified && <FiCheckCircle size={13} color="#3b82f6" title="Verified Account" />}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'between', marginBottom: '10px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
+                      <img src={post.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200'} alt="u" style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover' }} />
+                      <div>
+                        <div style={{ fontSize: '13px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          {post.user_name}
+                          {post.verified && <FiCheckCircle size={13} color="#3b82f6" title="Verified" />}
+                        </div>
+                        <div style={{ fontSize: '10px', color: '#94a3b8' }}>a month ago</div>
                       </div>
-                      <div style={{ fontSize: '11px', color: '#94a3b8' }}>@{post.username}</div>
                     </div>
                   </div>
 
@@ -965,7 +1056,7 @@ export default function App() {
                       <FiHeart fill={likedPosts[post.id] ? '#ef4444' : 'none'} /> {post.likes || 0}
                     </button>
                     <button onClick={() => setOpenCommentsPostId(isCommentsOpen ? null : post.id)} style={{ background: 'none', border: 'none', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
-                      <FiMessageCircle /> {comments.length} Comments
+                      <FiMessageCircle /> {comments.length}
                     </button>
                   </div>
 
@@ -1000,7 +1091,204 @@ export default function App() {
           </div>
         )}
 
-        {activeTab === 'find' && (
+        {/* REELS TAB */}
+        {activeTab === 'reels' && (
+          <div style={{ padding: '0 4px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+              <h2 style={{ fontSize: '16px', fontWeight: '700', margin: 0 }}>Community Reels</h2>
+              <button onClick={() => setIsCreatingReel(true)} style={{ padding: '6px 14px', backgroundColor: '#2563eb', border: 'none', borderRadius: '8px', color: '#fff', fontSize: '12px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <FiPlus /> New reel
+              </button>
+            </div>
+
+            {isCreatingReel && (
+              <div style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '12px', padding: '14px', marginBottom: '16px' }}>
+                <h3 style={{ fontSize: '14px', fontWeight: '600', marginBottom: '10px' }}>Publish New Reel</h3>
+                <input
+                  type="text"
+                  placeholder="Reel title..."
+                  value={newReelTitle}
+                  onChange={(e) => setNewReelTitle(e.target.value)}
+                  style={{ width: '100%', padding: '10px', backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', color: '#fff', fontSize: '12px', marginBottom: '8px', boxSizing: 'border-box' }}
+                />
+                <input
+                  type="text"
+                  placeholder="Video URL..."
+                  value={newReelUrl}
+                  onChange={(e) => setNewReelUrl(e.target.value)}
+                  style={{ width: '100%', padding: '10px', backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', color: '#fff', fontSize: '12px', marginBottom: '10px', boxSizing: 'border-box' }}
+                />
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button onClick={() => {
+                    setReels([{ id: Date.now().toString(), title: newReelTitle, user: currentUser?.username || 'user', views: '1 view', url: newReelUrl }, ...reels]);
+                    setIsCreatingReel(false);
+                    setNewReelTitle('');
+                    setNewReelUrl('');
+                  }} style={{ padding: '6px 14px', backgroundColor: '#2563eb', border: 'none', borderRadius: '6px', color: '#fff', fontSize: '12px', cursor: 'pointer' }}>Publish</button>
+                  <button onClick={() => setIsCreatingReel(false)} style={{ padding: '6px 14px', backgroundColor: '#1e293b', border: 'none', borderRadius: '6px', color: '#94a3b8', fontSize: '12px', cursor: 'pointer' }}>Cancel</button>
+                </div>
+              </div>
+            )}
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              {reels.map(reel => (
+                <div key={reel.id} style={{ position: 'relative', borderRadius: '12px', overflow: 'hidden', height: '380px', backgroundColor: '#000', border: '1px solid #1e293b' }}>
+                  <img src={reel.url} alt="reel" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '16px', background: 'linear-gradient(to top, rgba(0,0,0,0.9), transparent)' }}>
+                    <div style={{ fontSize: '13px', fontWeight: '700', color: '#fff', marginBottom: '4px' }}>@{reel.user}</div>
+                    <div style={{ fontSize: '12px', color: '#cbd5e1' }}>{reel.title}</div>
+                  </div>
+                  <div style={{ position: 'absolute', right: 12, bottom: 60, display: 'flex', flexDirection: 'column', gap: '14px', alignItems: 'center', color: '#fff' }}>
+                    <div style={{ textAlign: 'center' }}><FiHeart size={24} /> <span style={{ fontSize: '10px' }}>1</span></div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* CHATS TAB */}
+        {activeTab === 'chats' && (
+          <div style={{ backgroundColor: '#151c2c', border: isMobile ? 'none' : '1px solid #1e293b', borderRadius: isMobile ? '0px' : '14px', height: isMobile ? 'calc(100vh - 150px)' : '540px', display: 'grid', gridTemplateColumns: isMobile && selectedChatUser ? '1fr' : (isMobile ? '1fr' : '260px 1fr'), overflow: 'hidden' }}>
+            <div style={{ borderRight: '1px solid #1e293b', backgroundColor: '#0f172a', padding: '12px', display: isMobile && selectedChatUser ? 'none' : 'block' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                <h3 style={{ fontSize: '14px', fontWeight: '700', margin: 0 }}>Chats</h3>
+                <span style={{ fontSize: '11px', color: '#94a3b8' }}>Your private conversations.</span>
+              </div>
+              
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', overflowY: 'auto', maxHeight: '440px' }}>
+                {dbUsers.filter(u => u.id !== session?.user?.id).map(user => {
+                  const unreadCount = unreadCounts[user.id] || 0;
+                  return (
+                    <div
+                      key={user.id}
+                      onClick={() => setSelectedChatUser(user)}
+                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', padding: '10px', borderRadius: '8px', backgroundColor: selectedChatUser?.id === user.id ? '#1e293b' : 'transparent', cursor: 'pointer' }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, flex: 1 }}>
+                        <img src={user.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200'} alt="u" style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover' }} />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: '13px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.full_name}</span>
+                            {user.verified && <FiCheckCircle size={10} color="#3b82f6" />}
+                          </div>
+                          <div style={{ fontSize: '10px', color: '#94a3b8' }}>@{user.username}</div>
+                        </div>
+                      </div>
+
+                      {unreadCount > 0 && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#3b82f6', boxShadow: '0 0 8px #3b82f6' }}></span>
+                          <span style={{ backgroundColor: '#2563eb', color: '#fff', fontSize: '10px', fontWeight: 'bold', minWidth: '18px', height: '18px', borderRadius: '9px', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 5px' }}>
+                            {unreadCount}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div style={{ display: isMobile && !selectedChatUser ? 'none' : 'flex', flexDirection: 'column', height: '100%', backgroundColor: '#151c2c' }}>
+              {selectedChatUser ? (
+                <>
+                  <div style={{ padding: '12px 16px', borderBottom: '1px solid #1e293b', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      {isMobile && (
+                        <button onClick={() => setSelectedChatUser(null)} style={{ background: 'none', border: 'none', color: '#60a5fa', fontSize: '12px', cursor: 'pointer', marginRight: '4px' }}>Back</button>
+                      )}
+                      <img src={selectedChatUser.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200'} alt="u" style={{ width: '32px', height: '32px', borderRadius: '50%', objectFit: 'cover' }} />
+                      <div>
+                        <div style={{ fontSize: '13px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          {selectedChatUser.full_name}
+                          {selectedChatUser.verified && <FiCheckCircle size={11} color="#3b82f6" />}
+                        </div>
+                        <div style={{ fontSize: '10px' }}>{getUserStatusText(selectedChatUser.last_seen)}</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ flex: 1, padding: '16px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    {messages.map(m => {
+                      const isMe = m.sender_id === session.user.id;
+                      const isVoice = m.text?.startsWith('🎤');
+                      return (
+                        <div
+                          key={m.id}
+                          style={{
+                            alignSelf: isMe ? 'flex-end' : 'flex-start',
+                            backgroundColor: isMe ? '#2563eb' : '#1e293b',
+                            color: '#fff',
+                            padding: '10px 14px',
+                            borderRadius: '12px',
+                            fontSize: '12px',
+                            maxWidth: '75%'
+                          }}
+                        >
+                          {isVoice ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <button style={{ background: '#1d4ed8', border: 'none', borderRadius: '50%', width: '28px', height: '28px', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><FiPlay size={12} /></button>
+                              <span>waveform audio (0:09)</span>
+                            </div>
+                          ) : (
+                            m.text && <div>{m.text}</div>
+                          )}
+                          {m.image && <img src={m.image} alt="shared" style={{ width: '100%', borderRadius: '8px', marginTop: '6px', maxHeight: '180px', objectFit: 'cover' }} />}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {chatPhotoBase64 && (
+                    <div style={{ padding: '8px 14px', borderTop: '1px solid #1e293b', position: 'relative' }}>
+                      <img src={chatPhotoBase64} alt="attachment" style={{ height: '60px', borderRadius: '6px' }} />
+                      <button onClick={() => setChatPhotoBase64(null)} style={{ position: 'absolute', top: 4, left: 70, backgroundColor: 'rgba(0,0,0,0.7)', border: 'none', color: '#fff', borderRadius: '50%', padding: '2px', cursor: 'pointer' }}>
+                        <FiX size={12} />
+                      </button>
+                    </div>
+                  )}
+
+                  <form onSubmit={handleSendMessage} style={{ padding: '10px 16px', borderTop: '1px solid #1e293b', display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <label style={{ cursor: 'pointer', color: '#60a5fa', display: 'flex', alignItems: 'center' }} title="Send Photo">
+                      <FiImage size={18} />
+                      <input type="file" accept="image/*" onChange={(e) => {
+                        const file = e.target.files[0];
+                        if (file) {
+                          const reader = new FileReader();
+                          reader.onloadend = () => setChatPhotoBase64(reader.result);
+                          reader.readAsDataURL(file);
+                        }
+                      }} style={{ display: 'none' }} />
+                    </label>
+
+                    <button type="button" onClick={handleSimulateVoiceNote} style={{ background: 'none', border: 'none', color: '#60a5fa', cursor: 'pointer' }} title="Send Voice Note">
+                      <FiMic size={18} />
+                    </button>
+
+                    <input
+                      type="text"
+                      placeholder="Type a message..."
+                      value={newMessage}
+                      onChange={(e) => setNewMessage(e.target.value)}
+                      style={{ flex: 1, padding: '8px 12px', backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', color: '#fff', fontSize: '12px', outline: 'none' }}
+                    />
+                    <button type="submit" style={{ padding: '8px 14px', backgroundColor: '#2563eb', border: 'none', borderRadius: '8px', color: '#fff', cursor: 'pointer' }}>
+                      <FiSend />
+                    </button>
+                  </form>
+                </>
+              ) : (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#94a3b8', fontSize: '13px' }}>
+                  Select a private conversation to start chatting.
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* FRIENDS TAB */}
+        {activeTab === 'friends' && (
           <div style={{ padding: '0 4px' }}>
             {incomingRequests.length > 0 && (
               <div style={{ backgroundColor: '#151c2c', border: '1px solid #2563eb', borderRadius: '12px', padding: '16px', marginBottom: '20px' }}>
@@ -1020,15 +1308,15 @@ export default function App() {
                       <div style={{ display: 'flex', gap: '8px' }}>
                         <button
                           onClick={() => handleRespondFriendRequest(req.id, 'accepted')}
-                          style={{ padding: '6px 14px', backgroundColor: '#22c55e', border: 'none', borderRadius: '6px', color: '#fff', fontSize: '12px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                          style={{ padding: '6px 14px', backgroundColor: '#22c55e', border: 'none', borderRadius: '6px', color: '#fff', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}
                         >
-                          <FiUserCheck /> Accept
+                          Accept
                         </button>
                         <button
                           onClick={() => handleRespondFriendRequest(req.id, 'declined')}
-                          style={{ padding: '6px 14px', backgroundColor: '#ef4444', border: 'none', borderRadius: '6px', color: '#fff', fontSize: '12px', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                          style={{ padding: '6px 14px', backgroundColor: '#ef4444', border: 'none', borderRadius: '6px', color: '#fff', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}
                         >
-                          <FiUserX /> Decline
+                          Decline
                         </button>
                       </div>
                     </div>
@@ -1046,7 +1334,7 @@ export default function App() {
               <FiSearch style={{ position: 'absolute', left: '12px', top: '12px', color: '#94a3b8', fontSize: '14px' }} />
               <input
                 type="text"
-                placeholder="Search username, name, or email..."
+                placeholder="Search username or name..."
                 value={userSearchQuery}
                 onChange={(e) => {
                   const val = e.target.value;
@@ -1106,166 +1394,63 @@ export default function App() {
           </div>
         )}
 
-        {activeTab === 'reels' && (
-          <div style={{ padding: '0 4px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-              <h2 style={{ fontSize: '16px', fontWeight: '700', margin: 0 }}>Community Reels</h2>
-              <button onClick={() => setIsCreatingReel(true)} style={{ padding: '6px 14px', backgroundColor: '#2563eb', border: 'none', borderRadius: '8px', color: '#fff', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
-                Create Reel
-              </button>
-            </div>
-
-            {isCreatingReel && (
-              <div style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '12px', padding: '14px', marginBottom: '16px' }}>
-                <h3 style={{ fontSize: '14px', fontWeight: '600', marginBottom: '10px' }}>Publish New Reel</h3>
-                <input
-                  type="text"
-                  placeholder="Reel title..."
-                  value={newReelTitle}
-                  onChange={(e) => setNewReelTitle(e.target.value)}
-                  style={{ width: '100%', padding: '10px', backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', color: '#fff', fontSize: '12px', marginBottom: '8px', boxSizing: 'border-box' }}
-                />
-                <input
-                  type="text"
-                  placeholder="Video/Image URL..."
-                  value={newReelUrl}
-                  onChange={(e) => setNewReelUrl(e.target.value)}
-                  style={{ width: '100%', padding: '10px', backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', color: '#fff', fontSize: '12px', marginBottom: '10px', boxSizing: 'border-box' }}
-                />
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <button onClick={() => {
-                    setReels([{ id: Date.now().toString(), title: newReelTitle, user: currentUser?.username || 'user', views: '1 view', url: newReelUrl }, ...reels]);
-                    setIsCreatingReel(false);
-                    setNewReelTitle('');
-                    setNewReelUrl('');
-                  }} style={{ padding: '6px 14px', backgroundColor: '#2563eb', border: 'none', borderRadius: '6px', color: '#fff', fontSize: '12px', cursor: 'pointer' }}>Publish</button>
-                  <button onClick={() => setIsCreatingReel(false)} style={{ padding: '6px 14px', backgroundColor: '#1e293b', border: 'none', borderRadius: '6px', color: '#94a3b8', fontSize: '12px', cursor: 'pointer' }}>Cancel</button>
-                </div>
-              </div>
-            )}
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '14px' }}>
-              {reels.map(reel => (
-                <div key={reel.id} style={{ position: 'relative', borderRadius: '12px', overflow: 'hidden', height: '300px', border: '1px solid #1e293b' }}>
-                  <img src={reel.url} alt="reel" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                  <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '12px', background: 'linear-gradient(to top, rgba(0,0,0,0.9), transparent)' }}>
-                    <div style={{ fontSize: '12px', fontWeight: '700', color: '#fff' }}>{reel.title}</div>
-                    <div style={{ fontSize: '10px', color: '#60a5fa' }}>@{reel.user} • {reel.views}</div>
+        {/* GROUPS TAB */}
+        {activeTab === 'groups' && (
+          <div style={{ backgroundColor: '#151c2c', border: isMobile ? 'none' : '1px solid #1e293b', borderRadius: isMobile ? '0px' : '14px', height: isMobile ? 'calc(100vh - 150px)' : '520px', display: 'grid', gridTemplateColumns: isMobile && selectedGroup ? '1fr' : (isMobile ? '1fr' : '260px 1fr'), overflow: 'hidden' }}>
+            <div style={{ borderRight: '1px solid #1e293b', backgroundColor: '#0f172a', padding: '12px', display: isMobile && selectedGroup ? 'none' : 'block' }}>
+              <h3 style={{ fontSize: '14px', fontWeight: '700', margin: '0 0 4px 0' }}>Groups</h3>
+              <p style={{ fontSize: '11px', color: '#94a3b8', margin: '0 0 10px 0' }}>Chat with several people at once</p>
+              
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {groups.map(group => (
+                  <div
+                    key={group.id}
+                    onClick={() => setSelectedGroup(group)}
+                    style={{ padding: '10px', borderRadius: '8px', backgroundColor: selectedGroup?.id === group.id ? '#1e293b' : 'transparent', cursor: 'pointer' }}
+                  >
+                    <div style={{ fontSize: '13px', fontWeight: '600', color: '#fff' }}>{group.name}</div>
+                    <div style={{ fontSize: '11px', color: '#94a3b8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{group.description}</div>
                   </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'chats' && (
-          <div style={{ backgroundColor: '#151c2c', border: isMobile ? 'none' : '1px solid #1e293b', borderRadius: isMobile ? '0px' : '14px', height: isMobile ? 'calc(100vh - 140px)' : '520px', display: 'grid', gridTemplateColumns: isMobile && selectedChatUser ? '1fr' : (isMobile ? '1fr' : '260px 1fr'), overflow: 'hidden' }}>
-            <div style={{ borderRight: '1px solid #1e293b', backgroundColor: '#0f172a', padding: '12px', display: isMobile && selectedChatUser ? 'none' : 'block' }}>
-              <h3 style={{ fontSize: '14px', fontWeight: '700', margin: '0 0 10px 0' }}>Direct Messages</h3>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', overflowY: 'auto', maxHeight: '420px' }}>
-                {dbUsers.filter(u => u.id !== session?.user?.id).map(user => {
-                  const unreadCount = unreadCounts[user.id] || 0;
-                  return (
-                    <div
-                      key={user.id}
-                      onClick={() => setSelectedChatUser(user)}
-                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', padding: '8px', borderRadius: '8px', backgroundColor: selectedChatUser?.id === user.id ? '#1e293b' : 'transparent', cursor: 'pointer' }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
-                        <img src={user.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200'} alt="u" style={{ width: '32px', height: '32px', borderRadius: '50%', objectFit: 'cover' }} />
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: '12px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '3px' }}>
-                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.full_name}</span>
-                            {user.verified && <FiCheckCircle size={10} color="#3b82f6" />}
-                          </div>
-                          <div style={{ fontSize: '10px' }}>{getUserStatusText(user.last_seen)}</div>
-                        </div>
-                      </div>
-
-                      {/* Real-time Unread Badge (shows only if count > 0) */}
-                      {unreadCount > 0 && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                          <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#3b82f6', boxShadow: '0 0 8px #3b82f6' }}></span>
-                          <span style={{ backgroundColor: '#2563eb', color: '#fff', fontSize: '10px', fontWeight: 'bold', minWidth: '18px', height: '18px', borderRadius: '9px', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 5px', boxShadow: '0 2px 6px rgba(37,99,235,0.4)' }}>
-                            {unreadCount}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
+                ))}
               </div>
             </div>
 
-            <div style={{ display: isMobile && !selectedChatUser ? 'none' : 'flex', flexDirection: 'column', height: '100%' }}>
-              {selectedChatUser ? (
+            <div style={{ display: isMobile && !selectedGroup ? 'none' : 'flex', flexDirection: 'column', height: '100%', backgroundColor: '#151c2c' }}>
+              {selectedGroup ? (
                 <>
                   <div style={{ padding: '12px 16px', borderBottom: '1px solid #1e293b', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       {isMobile && (
-                        <button onClick={() => setSelectedChatUser(null)} style={{ background: 'none', border: 'none', color: '#60a5fa', fontSize: '12px', cursor: 'pointer', marginRight: '4px' }}>Back</button>
+                        <button onClick={() => setSelectedGroup(null)} style={{ background: 'none', border: 'none', color: '#60a5fa', fontSize: '12px', cursor: 'pointer', marginRight: '4px' }}>Back</button>
                       )}
-                      <img src={selectedChatUser.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200'} alt="u" style={{ width: '28px', height: '28px', borderRadius: '50%', objectFit: 'cover' }} />
                       <div>
-                        <div style={{ fontSize: '13px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                          {selectedChatUser.full_name}
-                          {selectedChatUser.verified && <FiCheckCircle size={11} color="#3b82f6" />}
-                        </div>
-                        <div style={{ fontSize: '10px' }}>{getUserStatusText(selectedChatUser.last_seen)}</div>
+                        <div style={{ fontSize: '13px', fontWeight: '600' }}>{selectedGroup.name}</div>
+                        <div style={{ fontSize: '10px', color: '#94a3b8' }}>14 members</div>
                       </div>
                     </div>
                   </div>
 
                   <div style={{ flex: 1, padding: '16px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                    {messages.map(m => {
-                      const isMe = m.sender_id === session.user.id;
-                      return (
-                        <div
-                          key={m.id}
-                          style={{
-                            alignSelf: isMe ? 'flex-end' : 'flex-start',
-                            backgroundColor: isMe ? '#2563eb' : '#1e293b',
-                            color: '#fff',
-                            padding: '10px 14px',
-                            borderRadius: '12px',
-                            fontSize: '12px',
-                            maxWidth: '75%'
-                          }}
-                        >
-                          {m.text && <div>{m.text}</div>}
-                          {m.image && <img src={m.image} alt="shared" style={{ width: '100%', borderRadius: '8px', marginTop: '6px', maxHeight: '180px', objectFit: 'cover' }} />}
-                        </div>
-                      );
-                    })}
+                    {groupMessages.map(gm => (
+                      <div key={gm.id} style={{ backgroundColor: '#1e293b', padding: '10px 14px', borderRadius: '10px', fontSize: '12px', maxWidth: '80%' }}>
+                        <div style={{ fontWeight: '600', color: '#60a5fa', marginBottom: '2px' }}>{gm.user}</div>
+                        <div style={{ color: '#fff' }}>{gm.text}</div>
+                        <div style={{ fontSize: '9px', color: '#94a3b8', textAlign: 'right', marginTop: '2px' }}>{gm.time}</div>
+                      </div>
+                    ))}
                   </div>
 
-                  {chatPhotoBase64 && (
-                    <div style={{ padding: '8px 14px', borderTop: '1px solid #1e293b', position: 'relative' }}>
-                      <img src={chatPhotoBase64} alt="attachment" style={{ height: '60px', borderRadius: '6px' }} />
-                      <button onClick={() => setChatPhotoBase64(null)} style={{ position: 'absolute', top: 4, left: 70, backgroundColor: 'rgba(0,0,0,0.7)', border: 'none', color: '#fff', borderRadius: '50%', padding: '2px', cursor: 'pointer' }}>
-                        <FiX size={12} />
-                      </button>
-                    </div>
-                  )}
-
-                  <form onSubmit={handleSendMessage} style={{ padding: '10px', borderTop: '1px solid #1e293b', display: 'flex', gap: '8px', alignItems: 'center' }}>
-                    <label style={{ cursor: 'pointer', color: '#60a5fa', display: 'flex', alignItems: 'center' }} title="Send Photo">
-                      <FiImage size={18} />
-                      <input type="file" accept="image/*" onChange={(e) => {
-                        const file = e.target.files[0];
-                        if (file) {
-                          const reader = new FileReader();
-                          reader.onloadend = () => setChatPhotoBase64(reader.result);
-                          reader.readAsDataURL(file);
-                        }
-                      }} style={{ display: 'none' }} />
-                    </label>
-
+                  <form onSubmit={(e) => {
+                    e.preventDefault();
+                    if (!newGroupMsg.trim()) return;
+                    setGroupMessages(prev => [...prev, { id: Date.now().toString(), user: currentUser?.full_name || 'You', text: newGroupMsg, time: 'Just now' }]);
+                    setNewGroupMsg('');
+                  }} style={{ padding: '10px 16px', borderTop: '1px solid #1e293b', display: 'flex', gap: '8px' }}>
                     <input
                       type="text"
-                      placeholder={`Message ${selectedChatUser.full_name}...`}
-                      value={newMessage}
-                      onChange={(e) => setNewMessage(e.target.value)}
+                      placeholder="Message group..."
+                      value={newGroupMsg}
+                      onChange={(e) => setNewGroupMsg(e.target.value)}
                       style={{ flex: 1, padding: '8px 12px', backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', color: '#fff', fontSize: '12px', outline: 'none' }}
                     />
                     <button type="submit" style={{ padding: '8px 14px', backgroundColor: '#2563eb', border: 'none', borderRadius: '8px', color: '#fff', cursor: 'pointer' }}>
@@ -1275,13 +1460,14 @@ export default function App() {
                 </>
               ) : (
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#94a3b8', fontSize: '13px' }}>
-                  Select a registered user from the left list to start a conversation.
+                  Select a group from the list.
                 </div>
               )}
             </div>
           </div>
         )}
 
+        {/* PROFILE TAB */}
         {activeTab === 'profile' && (
           <div style={{ backgroundColor: '#151c2c', border: isMobile ? 'none' : '1px solid #1e293b', borderRadius: isMobile ? '0px' : '14px', overflow: 'hidden' }}>
             <div style={{ height: '140px', backgroundImage: `url(${currentUser?.cover_url})`, backgroundSize: 'cover', backgroundPosition: 'center', position: 'relative' }}>
@@ -1302,17 +1488,34 @@ export default function App() {
                 </div>
 
                 <button onClick={() => setIsEditingProfile(true)} style={{ padding: '6px 14px', backgroundColor: '#2563eb', border: 'none', borderRadius: '8px', color: '#fff', fontSize: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: '600' }}>
-                  <FiEdit3 /> Edit Profile
+                  <FiEdit3 /> Edit
                 </button>
               </div>
 
               <h2 style={{ fontSize: '18px', fontWeight: '700', color: '#fff', margin: '0 0 2px 0', display: 'flex', alignItems: 'center', gap: '6px' }}>
                 {currentUser?.full_name}
-                {currentUser?.verified && <FiCheckCircle size={16} color="#3b82f6" title="Verified Account" />}
+                {currentUser?.verified && <FiCheckCircle size={16} color="#3b82f6" title="Verified" />}
               </h2>
-              <div style={{ fontSize: '12px', color: '#60a5fa', marginBottom: '8px' }}>@{currentUser?.username} • {currentUser?.email}</div>
-              <div style={{ fontSize: '12px', color: '#22c55e', fontWeight: '600', marginBottom: '10px' }}>👥 {friendCount} Friends</div>
-              <p style={{ fontSize: '13px', color: '#cbd5e1', lineHeight: '1.4', margin: '0 0 14px 0' }}>{currentUser?.bio}</p>
+              <div style={{ fontSize: '12px', color: '#60a5fa', marginBottom: '8px' }}>@{currentUser?.username}</div>
+              
+              <div style={{ display: 'flex', gap: '16px', fontSize: '12px', color: '#94a3b8', marginBottom: '12px' }}>
+                <div><b style={{ color: '#fff' }}>1</b> Followers</div>
+                <div><b style={{ color: '#fff' }}>1</b> Following</div>
+                <div><b style={{ color: '#fff' }}>{friendCount}</b> Friends</div>
+              </div>
+
+              <div style={{ display: 'flex', gap: '8px', marginBottom: '14px' }}>
+                <span style={{ backgroundColor: 'rgba(34, 197, 94, 0.1)', color: '#4ade80', fontSize: '11px', padding: '4px 8px', borderRadius: '6px', border: '1px solid rgba(34,197,94,0.3)' }}>online now</span>
+                <span style={{ backgroundColor: '#1e293b', color: '#94a3b8', fontSize: '11px', padding: '4px 8px', borderRadius: '6px' }}>Public Profile</span>
+              </div>
+
+              <p style={{ fontSize: '13px', color: '#cbd5e1', lineHeight: '1.4', margin: '0 0 16px 0' }}>{currentUser?.bio}</p>
+
+              <div style={{ backgroundColor: '#0f172a', padding: '12px', borderRadius: '8px', fontSize: '12px', color: '#94a3b8', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <div>Email: <span style={{ color: '#fff' }}>{currentUser?.email}</span></div>
+                <div>User ID: <span style={{ color: '#fff', fontSize: '10px' }}>{currentUser?.id}</span></div>
+                <div>Username: <span style={{ color: '#fff' }}>@{currentUser?.username}</span></div>
+              </div>
             </div>
 
             {isEditingProfile && (
@@ -1343,12 +1546,12 @@ export default function App() {
         )}
       </main>
 
-      {/* CLEAN APP INSTALL MODAL */}
+      {/* PWA INSTALL MODAL */}
       {showInstallModal && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '16px' }}>
           <div style={{ backgroundColor: '#151c2c', border: '1px solid #1e293b', borderRadius: '16px', padding: '24px', width: '100%', maxWidth: '380px', boxSizing: 'border-box' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-              <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#fff', margin: 0 }}>Install LCF Mobile App</h3>
+              <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#fff', margin: 0 }}>Install LCF App</h3>
               <button onClick={() => setShowInstallModal(false)} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer' }}><FiX size={18} /></button>
             </div>
             <p style={{ fontSize: '13px', color: '#94a3b8', lineHeight: '1.5', margin: '0 0 16px 0' }}>
@@ -1368,16 +1571,18 @@ export default function App() {
       {/* MOBILE BOTTOM NAVIGATION BAR */}
       <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(15, 23, 42, 0.98)', borderTop: '1px solid #1e293b', display: 'flex', justifyContent: 'space-around', padding: '10px 0', zIndex: '100', width: '100vw', boxSizing: 'border-box' }}>
         {[
-          { id: 'feed', label: 'Feed', icon: <FiHome size={20} /> },
-          { id: 'find', label: 'Friends', icon: <FiUsers size={20} /> },
-          { id: 'reels', label: 'Reels', icon: <FiVideo size={20} /> },
-          { id: 'chats', label: 'Chats', icon: <FiMessageSquare size={20} /> },
-          { id: 'profile', label: 'Profile', icon: <FiUser size={20} /> }
+          { id: 'home', label: 'Home', icon: <FiHome size={18} /> },
+          { id: 'feed', label: 'Feed', icon: <FiMessageCircle size={18} /> },
+          { id: 'reels', label: 'Reels', icon: <FiVideo size={18} /> },
+          { id: 'chats', label: 'Chats', icon: <FiMessageSquare size={18} /> },
+          { id: 'friends', label: 'Friends', icon: <FiUsers size={18} /> },
+          { id: 'groups', label: 'Groups', icon: <FiUsers size={18} /> },
+          { id: 'profile', label: 'Profile', icon: <FiUser size={18} /> }
         ].map(tab => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
-            style={{ background: 'none', border: 'none', color: activeTab === tab.id ? '#3b82f6' : '#94a3b8', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', fontSize: '10px' }}
+            style={{ background: 'none', border: 'none', color: activeTab === tab.id ? '#3b82f6' : '#94a3b8', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', fontSize: '9px' }}
           >
             {tab.icon}
             <span>{tab.label}</span>
