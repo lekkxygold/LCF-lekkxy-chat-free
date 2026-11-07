@@ -50,6 +50,27 @@ export default function App() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  // Auto-detect app updates after deployment (Forces refresh on new SW install)
+  useEffect(() => {
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.ready.then((registration) => {
+        registration.onupdatefound = () => {
+          const installingWorker = registration.installing;
+          if (installingWorker) {
+            installingWorker.onstatechange = () => {
+              if (installingWorker.state === 'installed') {
+                if (navigator.serviceWorker.controller) {
+                  // New content available; reload page automatically
+                  window.location.reload();
+                }
+              }
+            };
+          }
+        };
+      });
+    }
+  }, []);
+
   // Auth State & Referral Param Capture
   const [authMode, setAuthMode] = useState('login'); 
   const [email, setEmail] = useState('');
@@ -368,7 +389,6 @@ export default function App() {
     }
   };
 
-  // OPTIMIZED REEL LIKE WITH IMMEDIATE UI UPDATE
   const handleToggleReelLike = async (reel) => {
     if (!session) return;
     const isLiked = likedReelsMap[reel.id];
@@ -406,7 +426,6 @@ export default function App() {
     setMutedReelsMap(prev => ({ ...prev, [reelId]: !prev[reelId] }));
   };
 
-  // OPTIMIZED REEL COMMENT WITH TEMPORARY ID & ROLLBACK
   const handleAddReelComment = async (reelId, parentId = null) => {
     const textToPost = parentId ? reelReplyInput : reelCommentInput;
     if (!textToPost || !textToPost.trim()) return;
@@ -529,7 +548,6 @@ export default function App() {
     }
   };
 
-  // UPDATED CALENDAR-DAY MIDNIGHT RESET CLAIM FUNCTION
   const handleClaimDailyBonus = async () => {
     if (!session || !currentUser) return;
 
@@ -646,7 +664,6 @@ export default function App() {
     }
   };
 
-  // OPTIMIZED POST LIKE WITH IMMEDIATE UI UPDATE
   const handleToggleLike = async (post) => {
     if (!session) return;
     const isCurrentlyLiked = likedPostsMap[post.id];
@@ -677,7 +694,6 @@ export default function App() {
     }
   };
 
-  // OPTIMIZED POST COMMENT WITH TEMPORARY ID & ROLLBACK
   const handleAddComment = async (postId, parentId = null) => {
     const textToPost = parentId ? replyInputMap[parentId] : commentInputMap[postId];
     if (!textToPost || !textToPost.trim()) return;
