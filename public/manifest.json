@@ -3,25 +3,25 @@
   "name": "LCF Social Hub",
   "icons": [
     {
-      "src": "/logo192.png",
+      "src": "/logo192.png?v=1.0.1",
       "type": "image/png",
       "sizes": "192x192",
       "purpose": "any"
     },
     {
-      "src": "/logo512.png",
+      "src": "/logo512.png?v=1.0.1",
       "type": "image/png",
       "sizes": "512x512",
       "purpose": "any"
     },
     {
-      "src": "/logo512.png",
+      "src": "/logo512.png?v=1.0.1",
       "type": "image/png",
       "sizes": "512x512",
       "purpose": "maskable"
     }
   ],
-  "start_url": "/",
+  "start_url": "/?v=1.0.1",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
