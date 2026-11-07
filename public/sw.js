@@ -1,4 +1,4 @@
-const CACHE_NAME = 'lcf-hub-cache-v3';
+const CACHE_NAME = 'lcf-hub-cache-v4';
 
 const ASSETS_TO_CACHE = [
   '/',
@@ -31,6 +31,22 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
+  // For HTML / Navigation requests, always try the network first so deployments show instantly
+  if (event.request.mode === 'navigate' || event.request.destination === 'document') {
+    event.respondWith(
+      fetch(event.request)
+        .then((networkResponse) => {
+          return caches.open(CACHE_NAME).then((cache) => {
+            cache.put(event.request, networkResponse.clone());
+            return networkResponse;
+          });
+        })
+        .catch(() => caches.match(event.request) || caches.match('/'))
+    );
+    return;
+  }
+
+  // For other static assets (images, fonts, etc.), use cache-first
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => cachedResponse || fetch(event.request))
   );
