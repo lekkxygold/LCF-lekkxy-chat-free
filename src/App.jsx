@@ -60,7 +60,6 @@ export default function App() {
             installingWorker.onstatechange = () => {
               if (installingWorker.state === 'installed') {
                 if (navigator.serviceWorker.controller) {
-                  // New content available; reload page automatically
                   window.location.reload();
                 }
               }
@@ -1146,102 +1145,125 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col font-sans">
-      <header className="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between sticky top-0 z-50">
-        <h1 className="text-xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
+    <div className="min-h-screen bg-gray-100 flex flex-col font-sans">
+      {/* Header Bar */}
+      <header className="bg-white shadow-sm border-b border-gray-200 px-4 py-3 flex items-center justify-between sticky top-0 z-50">
+        <h1 className="text-xl font-black bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 bg-clip-text text-transparent">
           LCF Hub
         </h1>
         {session && currentUser && (
           <div className="flex items-center gap-3">
-            <span className="text-sm font-semibold text-gray-700">⭐ {lcfPoints} Points</span>
+            <button 
+              onClick={handleClaimDailyBonus} 
+              className="bg-amber-100 border border-amber-300 text-amber-800 text-xs font-bold px-3 py-1.5 rounded-full hover:bg-amber-200 transition flex items-center gap-1 shadow-sm"
+            >
+              ⭐ <span>{lcfPoints} Points</span>
+            </button>
           </div>
         )}
       </header>
 
-      <main className="flex-1 max-w-4xl w-full mx-auto p-4">
+      {/* Main Body */}
+      <main className="flex-1 max-w-xl w-full mx-auto p-4">
         {loading ? (
-          <div className="flex justify-center items-center h-64">
-            <p className="text-gray-500 animate-pulse">Loading LCF Hub...</p>
+          <div className="flex flex-col justify-center items-center h-64 gap-3">
+            <FiRefreshCw className="w-8 h-8 text-blue-600 animate-spin" />
+            <p className="text-gray-500 font-medium animate-pulse">Loading LCF Hub...</p>
           </div>
         ) : !session ? (
-          <div className="max-w-md mx-auto bg-white p-6 rounded-xl shadow-sm border border-gray-200 mt-10">
-            <h2 className="text-2xl font-bold text-center text-gray-800 mb-6">
+          <div className="max-w-md mx-auto bg-white p-6 rounded-2xl shadow-md border border-gray-100 mt-6">
+            <h2 className="text-2xl font-black text-center text-gray-900 mb-2">
               {authMode === 'login' ? 'Welcome Back to LCF' : 'Join LCF Social Hub'}
             </h2>
-            {authError && <div className="mb-4 p-3 bg-red-50 text-red-600 text-sm rounded-lg">{authError}</div>}
-            {authSuccess && <div className="mb-4 p-3 bg-green-50 text-green-600 text-sm rounded-lg">{authSuccess}</div>}
+            <p className="text-xs text-center text-gray-500 mb-6">
+              Connect with friends, share reels, and earn rewards daily.
+            </p>
+
+            {authError && <div className="mb-4 p-3 bg-red-50 text-red-600 text-xs rounded-xl font-medium border border-red-200">{authError}</div>}
+            {authSuccess && <div className="mb-4 p-3 bg-green-50 text-green-600 text-xs rounded-xl font-medium border border-green-200">{authSuccess}</div>}
             
             <form onSubmit={handleAuth} className="space-y-4">
               {authMode === 'signup' && (
                 <>
                   <div>
-                    <label className="block text-xs font-semibold text-gray-600 uppercase">Full Name</label>
+                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Full Name</label>
                     <input 
                       type="text" 
                       value={fullName} 
                       onChange={(e) => setFullName(e.target.value)} 
                       required 
-                      className="w-full mt-1 px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="e.g. John Doe"
+                      className="w-full px-4 py-2.5 bg-gray-50 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition text-sm text-gray-900 placeholder-gray-400"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-gray-600 uppercase">Username</label>
+                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Username</label>
                     <input 
                       type="text" 
                       value={username} 
                       onChange={(e) => setUsername(e.target.value)} 
                       required 
-                      className="w-full mt-1 px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="e.g. johndoe"
+                      className="w-full px-4 py-2.5 bg-gray-50 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition text-sm text-gray-900 placeholder-gray-400"
                     />
                   </div>
                 </>
               )}
               <div>
-                <label className="block text-xs font-semibold text-gray-600 uppercase">Email Address</label>
+                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Email Address</label>
                 <input 
                   type="email" 
                   value={email} 
                   onChange={(e) => setEmail(e.target.value)} 
                   required 
-                  className="w-full mt-1 px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="name@example.com"
+                  className="w-full px-4 py-2.5 bg-gray-50 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition text-sm text-gray-900 placeholder-gray-400"
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-gray-600 uppercase">Password</label>
+                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Password</label>
                 <input 
                   type="password" 
                   value={password} 
                   onChange={(e) => setPassword(e.target.value)} 
                   required 
-                  className="w-full mt-1 px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="••••••••"
+                  className="w-full px-4 py-2.5 bg-gray-50 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition text-sm text-gray-900 placeholder-gray-400"
                 />
               </div>
               <button 
                 type="submit" 
-                className="w-full py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition"
+                className="w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold rounded-xl hover:from-blue-700 hover:to-indigo-700 transition shadow-md hover:shadow-lg text-sm"
               >
                 {authMode === 'login' ? 'Sign In' : 'Create Account'}
               </button>
             </form>
 
-            <div className="mt-4 text-center text-sm text-gray-600">
+            <div className="mt-6 text-center text-xs text-gray-600">
               {authMode === 'login' ? (
-                <p>Don't have an account? <button onClick={() => setAuthMode('signup')} className="text-blue-600 font-semibold hover:underline">Sign up</button></p>
+                <p>Don't have an account? <button onClick={() => setAuthMode('signup')} className="text-blue-600 font-bold hover:underline ml-1">Sign up</button></p>
               ) : (
-                <p>Already have an account? <button onClick={() => setAuthMode('login')} className="text-blue-600 font-semibold hover:underline">Sign in</button></p>
+                <p>Already have an account? <button onClick={() => setAuthMode('login')} className="text-blue-600 font-bold hover:underline ml-1">Sign in</button></p>
               )}
             </div>
           </div>
         ) : (
-          <div className="space-y-6">
-            <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex items-center justify-between">
-              <div>
-                <h3 className="font-bold text-gray-800">Hello, {currentUser?.full_name}!</h3>
-                <p className="text-sm text-gray-500">@{currentUser?.username}</p>
+          <div className="space-y-4">
+            <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <img 
+                  src={currentUser?.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200'} 
+                  alt="Avatar" 
+                  className="w-12 h-12 rounded-full object-cover border-2 border-blue-500" 
+                />
+                <div>
+                  <h3 className="font-bold text-gray-900 text-base">{currentUser?.full_name}</h3>
+                  <p className="text-xs text-gray-500">@{currentUser?.username}</p>
+                </div>
               </div>
               <button 
                 onClick={handleSignOut}
-                className="flex items-center gap-1.5 px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg transition"
+                className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-50 rounded-xl border border-red-200 transition"
               >
                 <FiLogOut /> Sign Out
               </button>
