@@ -50,6 +50,31 @@ export default function App() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  // AUTO-REFRESH ON NEW DEPLOYMENT (FIXES CACHE / COOKIE CLEARING BUG)
+  useEffect(() => {
+    const checkVersion = async () => {
+      try {
+        const res = await fetch('/index.html?t=' + Date.now(), { cache: 'no-store' });
+        const htmlText = await res.text();
+        const match = htmlText.match(/<title>(.*?)<\/title>/);
+        const currentVersionTag = match ? match[1] : null;
+
+        const storedVersion = localStorage.getItem('lcf_app_version');
+        if (storedVersion && currentVersionTag && storedVersion !== currentVersionTag) {
+          localStorage.setItem('lcf_app_version', currentVersionTag);
+          window.location.reload(true);
+        } else if (currentVersionTag && !storedVersion) {
+          localStorage.setItem('lcf_app_version', currentVersionTag);
+        }
+      } catch (err) {
+        // Ignore network check errors
+      }
+    };
+
+    const interval = setInterval(checkVersion, 60000); // Check every 60s
+    return () => clearInterval(interval);
+  }, []);
+
   // Auth State & Referral Param Capture
   const [authMode, setAuthMode] = useState('login'); 
   const [email, setEmail] = useState('');
@@ -59,7 +84,6 @@ export default function App() {
   const [referredBy, setReferredBy] = useState('');
   const [authError, setAuthError] = useState('');
   const [authSuccess, setAuthSuccess] = useState('');
-  const [resendingEmail, setResendingEmail] = useState(false);
 
   useEffect(() => {
     const getParam = (param) => {
@@ -501,14 +525,20 @@ export default function App() {
     }
   };
 
+  // DAILY BONUS CLAIM AT MIDNIGHT (12:00 AM RESET)
   const handleClaimDailyBonus = async () => {
     if (!session || !currentUser) return;
     const now = new Date();
+
     if (lastClaimDate) {
       const lastClaim = new Date(lastClaimDate);
-      const hoursDiff = Math.abs(now - lastClaim) / 36e5;
-      if (hoursDiff < 24) {
-        alert("You have already claimed your daily 5 LCF points today! Check back in 24 hours.");
+      const isSameDay = 
+        now.getFullYear() === lastClaim.getFullYear() &&
+        now.getMonth() === lastClaim.getMonth() &&
+        now.getDate() === lastClaim.getDate();
+
+      if (isSameDay) {
+        alert("You have already claimed your +5 LCF points today! The daily reward resets automatically at 12:00 AM midnight.");
         return;
       }
     }
@@ -525,7 +555,7 @@ export default function App() {
         .update({ lcf_points: updatedPoints, last_claim_date: todayIso })
         .eq('id', session.user.id);
       
-      alert("🎉 Daily Bonus Claimed! You earned +5 LCF Points.");
+      alert("🎉 Daily Bonus Claimed! You earned +5 LCF Points for today.");
     } catch (err) {
       console.log('Claim bonus error:', err);
     }
@@ -1392,7 +1422,7 @@ export default function App() {
                   <FiGift /> Daily Login Reward
                 </div>
                 <p style={{ fontSize: '12px', color: '#e2e8f0', margin: 0 }}>
-                  Claim your free <b>+5 LCF Points</b> every day just for logging in!
+                  Claim your free <b>+5 LCF Points</b> every day (resets daily at 12:00 AM midnight)!
                 </p>
               </div>
               <button
@@ -1469,7 +1499,7 @@ export default function App() {
               
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '12px', color: '#cbd5e1' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 14px', backgroundColor: '#0f172a', borderRadius: '8px' }}>
-                  <span>🎁 Daily Sign-In Bonus</span>
+                  <span>🎁 Daily Sign-In Bonus (Midnight Reset)</span>
                   <span style={{ color: '#eab308', fontWeight: '700' }}>+5 Points / day</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 14px', backgroundColor: '#0f172a', borderRadius: '8px' }}>
